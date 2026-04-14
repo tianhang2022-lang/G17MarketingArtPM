@@ -619,146 +619,170 @@ const Gantt = {
     document.addEventListener('mouseup', onUp);
   },
 
-  // ── 素材排期甘特图（版本详情卡片内）
-  renderMaterialGantt(container, versionId) {
+  // ── 素材排期甘特图（版本详情卡片内）重写版 - 支持无素材/筛选/编辑
+  renderMaterialGantt(container, versionId, filterType = '') {
     const v = DataManager.getVersion(versionId);
-    if (!v) return;
-    const mats = DataManager.getMaterialsByVersion(versionId)
+    if (!v) { container.innerHTML = '<div class="gantt-empty" style="padding:1rem">找不到版本数据</div>'; return; }
+
+    // 全部素材
+    const allMats = DataManager.getMaterialsByVersion(versionId)
       .sort((a, b) => {
         const p = { high:0, medium:1, low:2 };
         return (p[a.priority]||1) - (p[b.priority]||1) || (a.type||'').localeCompare(b.type||'');
       });
 
-    if (!mats.length) {
-      container.innerHTML = '<div class="gantt-empty" style="padding:1rem">暂无素材数据</div>';
-      return;
-    }
+    // 筛选
+    const mats = filterType ? allMats.filter(m => m.type === filterType) : allMats;
 
-    // 获取版本排期
+    // 所有已有类型 → 筛选按钮
+    const allTypes   = [...new Set(allMats.map(m => m.type || 'design'))];
+    const typeMap    = { design:'美术设计', interactive:'H5', video:'视频', copy:'文案', art:'原画' };
+    const typeColors = { design:'#8b5cf6', art:'#ec4899', video:'#ef4444', copy:'#6b7280', interactive:'#3b82f6' };
+    const filterBar  = `
+      <div class="mg-filterbar">
+        <button class="mg-flt-btn${filterType===''?' active':''}" onclick="Gantt.renderMaterialGantt(this.closest('.mg-wrap-outer').querySelector('.mg-inner'),'${versionId}','')">全部</button>
+        ${allTypes.map(t => `<button class="mg-flt-btn${filterType===t?' active':''}" style="--fc:${typeColors[t]||'#6b7280'}" onclick="Gantt.renderMaterialGantt(this.closest('.mg-wrap-outer').querySelector('.mg-inner'),'${versionId}','${t}')">${typeMap[t]||t}</button>`).join('')}
+        <button class="mg-flt-btn" style="margin-left:auto;background:rgba(102,126,234,0.1);color:var(--primary)" onclick="Modal.openMaterialForm(null,'${versionId}');setTimeout(()=>Gantt.renderMaterialGantt(this.closest('.mg-wrap-outer').querySelector('.mg-inner'),'${versionId}','${filterType}'),800)">➕ 添加素材</button>
+      </div>`;
+
+    // 版本排期计算
     let sched = null;
     if (v.launchDate && v.rank) {
       try { sched = calcVersionSchedule(v.launchDate, v.rank); } catch(e) {}
     }
-    const launchD = v.launchDate ? new Date(v.launchDate + 'T00:00:00') : new Date();
+    const today   = new Date();
+    const launchD = v.launchDate ? new Date(v.launchDate + 'T00:00:00') : new Date(today.getTime() + 14*86400000);
     const startD  = sched ? sched.startDate : new Date(launchD.getTime() - 14*86400000);
-
-    // 时间范围：排期开始前2天 ~ 上线后2天
-    const minDate = new Date(startD.getTime()  - 2*86400000);
+    const minDate = new Date(startD.getTime() - 2*86400000);
     const maxDate = new Date(launchD.getTime() + 2*86400000);
-    const range   = maxDate - minDate;
-    const pct = d => Math.max(0, Math.min(100, (new Date(d) - minDate) / range * 100));
-    const today = new Date();
+    const range   = maxDate - minDate || 1;
+    const pct     = d => Math.max(0, Math.min(100, (new Date(d) - minDate) / range * 100));
     const todayPct = pct(today);
 
-    // 生成月/周刻度
-    const days = Math.round(range / 86400000);
+    // 刻度
+    const totalDays = Math.round(range / 86400000);
     let ticks = '';
-    if (days <= 35) {
-      // 按天/3天刻度
-      const step = days <= 14 ? 1 : 3;
-      let d = new Date(minDate);
-      while (d <= maxDate) {
-        const p = pct(d);
-        const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-        ticks += `<div class="mg-tick${isWeekend?' mg-weekend':''}" style="left:${p}%">
-          <div class="mg-tick-line"></div>
-          <div class="mg-tick-label">${d.getMonth()+1}/${d.getDate()}</div>
-        </div>`;
-        d = new Date(d.getTime() + step*86400000);
-      }
+    const step = totalDays <= 14 ? 1 : totalDays <= 35 ? 3 : 7;
+    let td = new Date(minDate);
+    while (td <= maxDate) {
+      const tp = pct(td);
+      const isWE = td.getDay() === 0 || td.getDay() === 6;
+      ticks += `<div class="mg-tick${isWE?' mg-weekend':''}" style="left:${tp}%"><div class="mg-tick-line"></div><div class="mg-tick-label">${td.getMonth()+1}/${td.getDate()}</div></div>`;
+      td = new Date(td.getTime() + step*86400000);
     }
 
-    // 阶段背景
-    let phaseBg = '';
+    // 阶段背景 & 里程碑线
+    let phaseBg = '', mstLines = '';
     if (sched) {
-      phaseBg = sched.phases.map((p, i) => {
+      phaseBg  = sched.phases.map(p => {
         const pl = pct(p.start), pw = Math.max(pct(p.end)-pl, 0);
-        const radius = i===0?'0 0 0 0':i===sched.phases.length-1?'0 0 0 0':'0';
-        return `<div class="mg-phase-bg" style="left:${pl}%;width:${pw}%;background:${p.color}14;border-right:1px dashed ${p.color}55" title="${p.name}">
-          <span class="mg-phase-label-bg" style="color:${p.color}99">${p.name}</span>
-        </div>`;
+        return `<div class="mg-phase-bg" style="left:${pl}%;width:${pw}%;background:${p.color}14;border-right:1px dashed ${p.color}44" title="${p.name}"><span class="mg-phase-label-bg" style="color:${p.color}99">${p.name}</span></div>`;
       }).join('');
-    }
-
-    // 里程碑竖线
-    let mstLines = '';
-    if (sched) {
       mstLines = sched.milestones.map(m => {
         const ml = pct(m.date);
         if (ml < 0 || ml > 100) return '';
-        return `<div class="mg-ms-line" style="left:${ml}%;border-left-color:${m.color}">
-          <div class="mg-ms-label-top" style="color:${m.color}">${m.icon}${m.name}</div>
+        return `<div class="mg-ms-line" style="left:${ml}%;border-left-color:${m.color}"><div class="mg-ms-label-top" style="color:${m.color}">${m.icon}${m.name}</div></div>`;
+      }).join('');
+    }
+    const todayLine = todayPct > 0 && todayPct < 100
+      ? `<div class="mg-today-line" style="left:${todayPct}%"><div style="position:absolute;top:2px;left:3px;font-size:0.58rem;color:#ef4444;white-space:nowrap">今日</div></div>` : '';
+
+    // 排期骨架行（版本阶段，不依赖素材）
+    const statColor = { todo:'#9ca3af', 'in-progress':'#f59e0b', review:'#3b82f6', done:'#10b981' };
+
+    // 计算制作期 barStart
+    let prodStart = startD;
+    if (sched) {
+      const pp = sched.phases.find(p => p.key === 'make' || p.name === '制作期');
+      if (pp) prodStart = pp.start;
+    }
+
+    // 若无素材，显示排期骨架提示
+    let matRowsHtml = '';
+    if (!mats.length) {
+      matRowsHtml = `
+        <div class="mg-empty-sched">
+          <div class="mg-row" style="opacity:0.5;pointer-events:none">
+            <div class="mg-row-label"><span class="mg-status-dot" style="background:#d1d5db"></span><span class="mg-row-name" style="color:var(--gray-400)">暂无${filterType?typeMap[filterType]+'类':''}素材</span></div>
+            <div class="mg-bar-area">
+              ${phaseBg}${mstLines}${todayLine}
+              <div class="mg-bar" style="left:${pct(prodStart)}%;width:${Math.max(pct(launchD)-pct(prodStart),2)}%;background:#e5e7eb;border:1.5px dashed #d1d5db"></div>
+            </div>
+          </div>
+          <div style="text-align:center;padding:0.75rem;font-size:0.78rem;color:var(--gray-400)">
+            ${filterType ? `当前筛选「${typeMap[filterType]||filterType}」无素材，<button class="btn btn-ghost btn-sm" style="font-size:0.72rem" onclick="Gantt.renderMaterialGantt(this.closest('.mg-wrap-outer').querySelector('.mg-inner'),'${versionId}','')">查看全部</button>` : '点击右上角「➕ 添加素材」开始排期'}
+          </div>
         </div>`;
+    } else {
+      // 按类型分组
+      const typeGroups = {};
+      mats.forEach(m => {
+        const t = m.type || 'design';
+        if (!typeGroups[t]) typeGroups[t] = [];
+        typeGroups[t].push(m);
+      });
+
+      matRowsHtml = Object.entries(typeGroups).map(([type, tMats]) => {
+        const groupHdr = `<div class="mg-group-header" style="display:flex;align-items:center;gap:0.5rem">
+          <span style="width:8px;height:8px;border-radius:50%;background:${typeColors[type]||'#6b7280'};flex-shrink:0"></span>
+          <span style="font-size:0.7rem;font-weight:700;color:var(--gray-600)">${typeMap[type]||type} <span style="color:var(--gray-400);font-weight:400">(${tMats.length})</span></span>
+        </div>`;
+
+        const rows = tMats.map(m => {
+          const dueD    = m.dueDate ? new Date(m.dueDate + 'T00:00:00') : launchD;
+          const bl      = Math.min(pct(prodStart), pct(dueD) - 2);
+          const bw      = Math.max(pct(dueD) - bl, 2);
+          const dotPos  = pct(dueD);
+          const sc      = statColor[m.status] || '#9ca3af';
+          const overdue = m.dueDate && m.status !== 'done' && dueD < today;
+          return `
+          <div class="mg-row">
+            <div class="mg-row-label" title="${m.name}" onclick="Modal.openMaterialDetail('${m.id}')" style="cursor:pointer">
+              <span class="mg-status-dot" style="background:${sc}"></span>
+              <span class="mg-row-name${overdue?' mg-overdue':''}">${m.name}</span>
+              ${m.assignee ? `<span class="mg-assignee">${m.assignee}</span>` : ''}
+            </div>
+            <div class="mg-row-actions">
+              <input type="date" class="mg-due-input" value="${m.dueDate||''}" title="截止日" onchange="Gantt._mgUpdateDue('${m.id}','${versionId}',this.value,'${filterType}',this)">
+              <button class="mg-act-btn" title="编辑素材" onclick="Modal.openMaterialDetail('${m.id}')">✏️</button>
+            </div>
+            <div class="mg-bar-area">
+              ${phaseBg}${mstLines}${todayLine}
+              <div class="mg-bar" style="left:${bl}%;width:${bw}%;background:${sc}33;border:1.5px solid ${sc}88" title="${m.name}"></div>
+              <div class="mg-dot" style="left:${dotPos}%;background:${sc};border-color:${overdue?'#ef4444':'white'}" title="截止：${m.dueDate||'未设'}"></div>
+            </div>
+          </div>`;
+        }).join('');
+
+        return groupHdr + rows;
       }).join('');
     }
 
-    // 今日线
-    const todayLine = todayPct > 0 && todayPct < 100
-      ? `<div class="mg-today-line" style="left:${todayPct}%"></div>` : '';
-
-    // 素材行
-    const typeMap   = { design:'美术设计', interactive:'H5', video:'视频', copy:'文案', art:'原画' };
-    const statColor = { todo:'#9ca3af', 'in-progress':'#f59e0b', review:'#3b82f6', done:'#10b981' };
-
-    // 按类型分组显示
-    const typeGroups = {};
-    mats.forEach(m => {
-      const t = m.type || 'design';
-      if (!typeGroups[t]) typeGroups[t] = [];
-      typeGroups[t].push(m);
-    });
-
-    const matRows = Object.entries(typeGroups).map(([type, tMats]) => {
-      const groupHeader = `<div class="mg-group-header">
-        <span style="font-size:0.68rem;font-weight:700;color:var(--gray-500);padding:0.25rem 0.5rem;background:var(--gray-50);border-radius:0.25rem">${typeMap[type]||type} (${tMats.length})</span>
-      </div>`;
-
-      const rows = tMats.map(m => {
-        // 素材 bar 起始日：用所属阶段中"制作期"的起点，回退到版本 startDate
-        let barStart = startD;
-        if (sched) {
-          const prodPhase = sched.phases.find(p => p.key === 'make' || p.key === 'production' || p.name === '制作期');
-          if (prodPhase) barStart = prodPhase.start;
-        }
-        const dueD   = m.dueDate ? new Date(m.dueDate + 'T00:00:00') : launchD;
-        const barEnd = dueD;
-        const bl     = Math.min(pct(barStart), pct(barEnd) - 2); // 保证最小宽度
-        const bw     = Math.max(pct(barEnd) - bl, 2);
-        const dotPos = pct(barEnd);
-        const sc      = statColor[m.status] || '#9ca3af';
-        const overdue = m.dueDate && m.status !== 'done' && dueD < today;
-        return `
-        <div class="mg-row" onclick="Modal.openMaterialDetail('${m.id}')">
-          <div class="mg-row-label" title="${m.name}">
-            <span class="mg-status-dot" style="background:${sc}"></span>
-            <span class="mg-row-name${overdue?' mg-overdue':''}">${m.name}</span>
-            ${m.assignee ? `<span class="mg-assignee">${m.assignee}</span>` : ''}
-          </div>
-          <div class="mg-bar-area">
-            ${phaseBg}
-            ${mstLines}
-            ${todayLine}
-            <div class="mg-bar" style="left:${bl}%;width:${bw}%;background:${sc}33;border:1.5px solid ${sc}88" title="${m.name} · ${m.dueDate||'未设截止日'}"></div>
-            <div class="mg-dot" style="left:${dotPos}%;background:${sc};border-color:${overdue?'#ef4444':'white'}" title="截止：${m.dueDate||'未设'}"></div>
-          </div>
-        </div>`;
-      }).join('');
-
-      return groupHeader + rows;
-    }).join('');
-
     container.innerHTML = `
+    ${filterBar}
     <div class="mat-gantt-wrap">
       <div class="mg-header">
-        <div class="mg-sidebar-ph"></div>
-        <div class="mg-timeline-header" style="position:relative;height:28px">
-          ${phaseBg}
-          ${mstLines}
-          ${todayLine}
-          ${ticks}
+        <div class="mg-sidebar-ph" style="min-width:260px;width:260px"></div>
+        <div class="mg-timeline-header" style="position:relative;height:28px;flex:1">
+          ${phaseBg}${mstLines}${todayLine}${ticks}
         </div>
       </div>
-      <div class="mg-rows">${matRows}</div>
+      <div class="mg-rows">${matRowsHtml}</div>
+      ${sched ? `
+      <div class="mg-legend">
+        ${sched.phases.map(p=>`<span class="mg-legend-item"><span style="width:10px;height:10px;border-radius:2px;background:${p.color}44;border:1px solid ${p.color}88;display:inline-block"></span>${p.name}</span>`).join('')}
+        <span class="mg-legend-item"><span style="width:2px;height:12px;background:#ef4444;display:inline-block;border-radius:1px"></span>今日</span>
+        ${sched.milestones.map(m=>`<span class="mg-legend-item">${m.icon}${m.name}</span>`).join('')}
+      </div>` : ''}
     </div>`;
+  },
+
+  // 更新素材截止日并重新渲染
+  _mgUpdateDue(matId, versionId, newDate, filterType, inputEl) {
+    DataManager.updateMaterial(matId, { dueDate: newDate });
+    Utils.toast('截止日已更新', 'success');
+    // 重新渲染
+    const inner = inputEl.closest('.mg-inner') || inputEl.closest('[id="vd_matgantt_inner"]');
+    if (inner) Gantt.renderMaterialGantt(inner, versionId, filterType);
   }
 };

@@ -20,13 +20,10 @@ const Modal = {
         btn.classList.add('active');
         const target = container.querySelector(`#${pane}`);
         if (target) target.classList.add('active');
-        // 懒加载素材排期甘特图
+        // 渲染素材排期甘特图（每次切换都重新渲染确保数据最新）
         if (pane === 'vd_matgantt' && versionId) {
           const inner = container.querySelector('#vd_matgantt_inner');
-          if (inner && !inner.dataset.loaded) {
-            inner.dataset.loaded = '1';
-            Gantt.renderMaterialGantt(inner, versionId);
-          }
+          if (inner) Gantt.renderMaterialGantt(inner, versionId, '');
         }
       });
     });
@@ -457,8 +454,10 @@ const Modal = {
           </div>
           <!-- 素材排期甘特图 -->
           <div class="tab-pane" id="vd_matgantt">
-            <div id="vd_matgantt_inner" style="min-height:200px;padding:0.25rem 0">
-              <div style="padding:2rem;text-align:center;color:var(--gray-400)">正在加载排期甘特图…</div>
+            <div class="mg-wrap-outer" style="padding:0.25rem 0">
+              <div id="vd_matgantt_inner" class="mg-inner" style="min-height:120px">
+                <div style="padding:2rem;text-align:center;color:var(--gray-400)">点击此标签加载排期甘特图…</div>
+              </div>
             </div>
           </div>
           <!-- 进度编辑（时间线事件管理） -->
