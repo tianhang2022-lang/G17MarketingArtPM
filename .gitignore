@@ -1,0 +1,11 @@
+# 不提交系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 不提交编辑器配置
+.vscode/
+.idea/
+
+# 不提交本地数据备份（data.json 是运行时同步文件，可选提交）
+# data.json
