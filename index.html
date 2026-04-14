@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>数据概览 · 大话西游素材管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">🎮 大话西游素材管理 <span class="year-badge">2026</span></a>
+    <div class="header-actions">
+      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
+      <button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
+      <button class="header-btn" onclick="GitHubSync.pull()">⬇️ 拉取</button>
+      <button class="header-btn" onclick="GitHubSync.configure()">⚙️ 配置</button>
+      <button class="header-btn" onclick="DataManager.exportJSON()">📤 导出</button>
+      <button class="header-btn" onclick="document.getElementById('importInput').click()">📥 导入</button>
+      <input type="file" id="importInput" accept=".json" style="display:none" onchange="handleImport(this)">
+      <button class="header-btn" style="background:rgba(239,68,68,0.12);color:#ef4444;border-color:rgba(239,68,68,0.3)"
+        onclick="if(confirm('将清除现有数据，重置为 2026 版本规划数据？')){DataManager.clearAndSeed();DataManager.save();renderCurrentPage();}">
+        🔄 重置规划数据
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-nav">
+      <span class="sidebar-section-title">主菜单</span>
+      <a class="nav-item active" href="index.html"><span class="nav-icon">📊</span> 数据概览</a>
+      <a class="nav-item" href="versions.html"><span class="nav-icon">📦</span> 版本管理</a>
+      <a class="nav-item" href="materials.html"><span class="nav-icon">🎨</span> 素材管理</a>
+      <a class="nav-item" href="kanban.html"><span class="nav-icon">🗂️</span> 看板视图</a>
+      <a class="nav-item" href="reports.html"><span class="nav-icon">📈</span> 统计报表</a>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ① 时间窗口控制器 -->
+    <div class="period-control-bar">
+      <div class="period-left">
+        <span class="period-today-badge" id="todayBadge"></span>
+        <div class="period-quick-btns">
+          <button class="gtb-btn active" id="periodBtnDefault" onclick="setPeriod('default')">默认（前7天后1月）</button>
+          <button class="gtb-btn" onclick="setPeriod('2m')">前后2月</button>
+          <button class="gtb-btn" onclick="setPeriod('month')">本月</button>
+          <button class="gtb-btn" onclick="setPeriod('quarter')">本季度</button>
+          <button class="gtb-btn" onclick="setPeriod('year')">全年</button>
+        </div>
+        <span style="font-size:0.78rem;color:var(--gray-500)">自定义：</span>
+        <input type="date" class="form-control" id="pFrom" style="max-width:145px" onchange="renderCurrentPage()">
+        <span style="color:var(--gray-400);font-size:0.8rem">至</span>
+        <input type="date" class="form-control" id="pTo"   style="max-width:145px" onchange="renderCurrentPage()">
+      </div>
+      <div>
+        <a href="reports.html" class="btn btn-ghost btn-sm">📈 统计报表 →</a>
+      </div>
+    </div>
+
+    <!-- ② 本期摘要卡片 -->
+    <div class="stats-grid" id="periodStats"></div>
+
+    <!-- ③ 本期版本上线时间轴 -->
+    <div class="chart-card" style="margin-top:0.75rem">
+      <div class="chart-card-head">
+        <span class="chart-title" style="margin-bottom:0">📅 本期版本排期甘特图</span>
+        <span style="font-size:0.72rem;color:var(--gray-400)">三色段 = 前策期/制作期/执行期 · ♦ = 里程碑节点 · 拖拽 ▐ 调整上线日</span>
+      </div>
+      <div id="ganttContainer" style="margin-top:0.5rem"></div>
+    </div>
+
+    <!-- ④ 两栏：近期里程碑 + 待处理素材 -->
+    <div class="two-col-grid" style="margin-top:0.75rem">
+      <!-- 近期里程碑 -->
+      <div class="chart-card">
+        <div class="chart-card-head">
+          <span class="chart-title" style="margin-bottom:0">🚩 近期里程碑（14天内）</span>
+          <span style="font-size:0.72rem;color:var(--gray-400)" id="milestoneCount"></span>
+        </div>
+        <div id="milestoneList" style="margin-top:0.75rem"></div>
+      </div>
+      <!-- 待处理素材 -->
+      <div class="chart-card">
+        <div class="chart-card-head">
+          <span class="chart-title" style="margin-bottom:0">⚠️ 即将到期（7天内）</span>
+          <a href="materials.html" style="font-size:0.78rem;color:var(--primary)">查看全部 →</a>
+        </div>
+        <div id="upcomingList" style="margin-top:0.75rem"></div>
+      </div>
+    </div>
+
+    <!-- ⑤ 本期版本进度列表 -->
+    <div class="chart-card" style="margin-top:0.75rem">
+      <div class="chart-card-head">
+        <span class="chart-title" style="margin-bottom:0">🚀 本期版本进度</span>
+        <a href="versions.html" style="font-size:0.78rem;color:var(--primary)">版本管理 →</a>
+      </div>
+      <div id="periodVersionList" style="margin-top:0.75rem"></div>
+    </div>
+
+  </main>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="js/utils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/gantt.js"></script>
+<script src="js/github-sync.js"></script>
+<script>
+// ── 时间窗口设置
+function setPeriod(mode) {
+  const t = new Date();
+  let from, to;
+  if (mode === 'default') {
+    // 今天前7天 ~ 后1个月
+    from = new Date(t.getTime() - 7 * 86400000);
+    to   = new Date(t.getFullYear(), t.getMonth()+1, t.getDate()); // +1 个月
+  } else if (mode === '2m') {
+    from = new Date(t.getFullYear(), t.getMonth()-2, 1);
+    to   = new Date(t.getFullYear(), t.getMonth()+3, 0);
+  } else if (mode === 'month') {
+    from = new Date(t.getFullYear(), t.getMonth(), 1);
+    to   = new Date(t.getFullYear(), t.getMonth()+1, 0);
+  } else if (mode === 'quarter') {
+    const q = Math.floor(t.getMonth()/3);
+    from = new Date(t.getFullYear(), q*3, 1);
+    to   = new Date(t.getFullYear(), q*3+3, 0);
+  } else {
+    from = new Date(t.getFullYear(), 0, 1);
+    to   = new Date(t.getFullYear(), 11, 31);
+  }
+  document.getElementById('pFrom').value = from.toISOString().slice(0,10);
+  document.getElementById('pTo').value   = to.toISOString().slice(0,10);
+  // 高亮当前激活按钮
+  document.querySelectorAll('.period-quick-btns .gtb-btn').forEach(b => b.classList.remove('active'));
+  const modeMap = { default:'periodBtnDefault' };
+  if (modeMap[mode]) document.getElementById(modeMap[mode])?.classList.add('active');
+  renderCurrentPage();
+}
+
+function getPeriod() {
+  return {
+    from: document.getElementById('pFrom').value,
+    to:   document.getElementById('pTo').value
+  };
+}
+
+function inPeriod(dateStr, from, to) {
+  if (!dateStr) return false;
+  return dateStr >= from && dateStr <= to;
+}
+
+// ── 主渲染
+function renderCurrentPage() {
+  const { from, to } = getPeriod();
+
+  // 今日标识
+  const today = new Date();
+  document.getElementById('todayBadge').innerHTML =
+    `📅 <strong>今日</strong> ${today.toLocaleDateString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit'})}
+     <span style="color:var(--gray-400);margin-left:0.5rem;font-weight:400">窗口：${from} ~ ${to}</span>`;
+
+  // 本期版本（上线日在时间窗口内，或进行中版本）
+  const periodVersions = DataManager.versions.filter(v =>
+    inPeriod(v.launchDate, from, to) ||
+    (v.status === 'in-progress' && (!v.launchDate || v.launchDate >= from))
+  );
+  const allMats = DataManager.materials;
+  const periodMats = allMats.filter(m => periodVersions.some(v => v.id === m.versionId));
+
+  // ── ② 摘要卡片
+  const inProgress   = periodVersions.filter(v => v.status === 'in-progress').length;
+  const planning     = periodVersions.filter(v => v.status === 'planning').length;
+  const done         = periodVersions.filter(v => v.status === 'done').length;
+  const matDone      = periodMats.filter(m => m.status === 'done').length;
+  const matReview    = periodMats.filter(m => m.status === 'review').length;
+  const matInP       = periodMats.filter(m => m.status === 'in-progress').length;
+  const now          = Date.now();
+  const overdueCount = periodMats.filter(m => m.dueDate && m.status !== 'done' && new Date(m.dueDate) < now).length;
+
+  document.getElementById('periodStats').innerHTML = `
+    <div class="stat-card stat-clickable" onclick="location.href='versions.html'" style="border-left-color:#667eea">
+      <div class="stat-label">本期版本</div>
+      <div class="stat-value">${periodVersions.length}</div>
+      <div class="stat-sub">S:${periodVersions.filter(v=>v.rank==='S').length} A:${periodVersions.filter(v=>v.rank==='A').length} B:${periodVersions.filter(v=>v.rank==='B').length}</div>
+    </div>
+    <div class="stat-card stat-clickable orange" onclick="location.href='kanban.html?status=in-progress'">
+      <div class="stat-label">进行中版本</div>
+      <div class="stat-value">${inProgress}</div>
+      <div class="stat-sub">计划中 ${planning} · 已完成 ${done}</div>
+    </div>
+    <div class="stat-card stat-clickable" onclick="location.href='materials.html'" style="border-left-color:#8b5cf6">
+      <div class="stat-label">本期素材</div>
+      <div class="stat-value">${periodMats.length}</div>
+      <div class="stat-sub">完成率 ${periodMats.length?Math.round(matDone/periodMats.length*100):0}%</div>
+    </div>
+    <div class="stat-card stat-clickable" style="border-left-color:var(--success)" onclick="location.href='materials.html?status=done'">
+      <div class="stat-label">已完成素材</div>
+      <div class="stat-value">${matDone}</div>
+      <div class="stat-sub">→ 素材管理</div>
+    </div>
+    <div class="stat-card stat-clickable" style="border-left-color:var(--info)" onclick="location.href='kanban.html?status=review'">
+      <div class="stat-label">待审核素材</div>
+      <div class="stat-value">${matReview}</div>
+      <div class="stat-sub">进行中 ${matInP}</div>
+    </div>
+    <div class="stat-card stat-clickable" style="border-left-color:var(--danger)" onclick="location.href='materials.html'">
+      <div class="stat-label">逾期素材</div>
+      <div class="stat-value" style="color:${overdueCount>0?'var(--danger)':'inherit'}">${overdueCount}</div>
+      <div class="stat-sub">${overdueCount>0?'⚠️ 需要关注':'✅ 无逾期'}</div>
+    </div>`;
+
+  // ── ③ 甘特图（同步时间范围，每次重渲染时重置筛选状态）
+  const ganttContainer = document.getElementById('ganttContainer');
+  ganttContainer.innerHTML = '';
+  Gantt.render(ganttContainer, { rangeStart: from, rangeEnd: to, resetFilters: true });
+
+  // ── ④a 近期里程碑（14天内）
+  const milestones = [];
+  const deadline14 = new Date(now + 14*86400000);
+  periodVersions.forEach(v => {
+    if (!v.launchDate || !v.rank) return;
+    try {
+      const s = calcVersionSchedule(v.launchDate, v.rank);
+      s.milestones.forEach(m => {
+        if (m.date >= today && m.date <= deadline14) {
+          milestones.push({ ...m, versionName: v.name, versionId: v.id, versionRank: v.rank });
+        }
+      });
+    } catch(e) {}
+  });
+  milestones.sort((a,b) => a.date - b.date);
+  document.getElementById('milestoneCount').textContent = milestones.length ? `${milestones.length} 个` : '';
+  document.getElementById('milestoneList').innerHTML = milestones.length
+    ? milestones.map(m => `
+      <div class="milestone-row" onclick="Modal.openVersionDetail('${m.versionId}')">
+        <div class="ms-diamond-sm" style="background:${m.color}"></div>
+        <div class="ms-row-body">
+          <div class="ms-name" style="color:${m.color}">${m.icon} ${m.name}</div>
+          <div class="ms-version">${m.versionName}</div>
+        </div>
+        <div class="ms-date">
+          <span style="font-weight:700;color:${m.color}">${Gantt._fmtD(m.date)}</span>
+          <span class="ms-countdown">${Math.ceil((m.date-now)/86400000)}天后</span>
+        </div>
+      </div>`).join('')
+    : '<div class="empty-state" style="padding:1.5rem 0">🎉 近14天内无里程碑节点</div>';
+
+  // ── ④b 即将到期素材（7天内）
+  const deadline7 = new Date(now + 7*86400000);
+  const soonMats  = periodMats.filter(m => m.dueDate && m.status !== 'done' && new Date(m.dueDate) >= today && new Date(m.dueDate) <= deadline7)
+    .sort((a,b) => new Date(a.dueDate)-new Date(b.dueDate));
+  document.getElementById('upcomingList').innerHTML = soonMats.length
+    ? soonMats.map(m => {
+        const v = DataManager.getVersion(m.versionId);
+        const days = Math.ceil((new Date(m.dueDate)-now)/86400000);
+        return `<div class="upcoming-row" onclick="Modal.openMaterialDetail('${m.id}')">
+          <div>${Utils.typeIcon(m.type)} <span style="font-weight:600">${m.name}</span></div>
+          <div style="font-size:0.72rem;color:var(--gray-500)">${v?v.name:'-'} · ${m.assignee||'未分配'}</div>
+          <div style="white-space:nowrap">
+            <span class="badge ${Utils.statusClass(m.status)}">${Utils.statusLabel(m.status)}</span>
+            <span style="margin-left:0.35rem;color:var(--warning);font-size:0.72rem;font-weight:700">${days}天后</span>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state" style="padding:1.5rem 0">🎉 7天内无到期素材</div>';
+
+  // ── ⑤ 本期版本进度
+  document.getElementById('periodVersionList').innerHTML = periodVersions.length
+    ? periodVersions.sort((a,b) => new Date(a.launchDate||'9999')-new Date(b.launchDate||'9999')).map(v => {
+        const mats  = DataManager.getMaterialsByVersion(v.id);
+        const vDone = mats.filter(m => m.status === 'done').length;
+        const rankClr = v.rank==='S' ? '#667eea' : v.rank==='A' ? '#f59e0b' : '#6b7280';
+        return `
+        <div class="version-progress-row" onclick="Modal.openVersionDetail('${v.id}')">
+          <div class="vpr-left">
+            <span class="badge rank-${(v.rank||'b').toLowerCase()}" style="font-size:0.65rem;flex-shrink:0">${v.rank||'?'}</span>
+            <span class="vpr-name">${v.name}</span>
+            <span class="badge ${Utils.statusClass(v.status)}" style="font-size:0.65rem;flex-shrink:0">${Utils.statusLabel(v.status)}</span>
+          </div>
+          <div class="vpr-right">
+            <span style="font-size:0.72rem;color:var(--gray-500)">${vDone}/${mats.length}</span>
+            <span style="color:${rankClr};font-weight:700;font-size:0.8rem;min-width:35px;text-align:right">${v.progress||0}%</span>
+            <span style="font-size:0.72rem;color:var(--gray-400);min-width:70px;text-align:right">${v.launchDate||'未定'}</span>
+          </div>
+          <div class="vpr-bar-wrap">
+            <div class="progress-bar" style="height:5px;flex:1">
+              <div class="progress-fill" style="width:${v.progress||0}%;background:${rankClr}"></div>
+            </div>
+            <button class="gantt-action-btn" onclick="event.stopPropagation();Gantt.openProgressEditor('${v.id}')" title="编辑进度">📊</button>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state" style="padding:1.5rem">本期内无版本数据</div>';
+}
+
+function handleImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { DataManager.importJSON(e.target.result); Utils.toast('导入成功', 'success'); renderCurrentPage(); }
+    catch(_) { Utils.toast('文件格式错误', 'error'); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// 初始化
+DataManager.init();
+// 设置默认时间窗口：今天前7天 ~ 后1个月
+setPeriod('default');
+GitHubSync.updateStatusUI();
+Utils.highlightNav();
+</script>
+</body>
+</html>

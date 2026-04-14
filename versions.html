@@ -1,0 +1,199 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>版本管理 · 大话西游素材管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">🎮 大话西游素材管理 <span class="year-badge">2026</span></a>
+    <div class="header-actions">
+      <div class="sync-status">
+        <div class="sync-dot" id="syncDot"></div>
+        <span id="syncText">加载中...</span>
+      </div>
+      <button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
+      <button class="header-btn" onclick="GitHubSync.pull()">⬇️ 拉取</button>
+      <button class="header-btn" onclick="GitHubSync.configure()">⚙️ 配置</button>
+      <button class="header-btn" onclick="DataManager.exportJSON()">📤 导出</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-nav">
+      <span class="sidebar-section-title">主菜单</span>
+      <a class="nav-item" href="index.html" data-page="index.html"><span class="nav-icon">📊</span> 数据概览</a>
+      <a class="nav-item active" href="versions.html" data-page="versions.html"><span class="nav-icon">📦</span> 版本管理</a>
+      <a class="nav-item" href="materials.html" data-page="materials.html"><span class="nav-icon">🎨</span> 素材管理</a>
+      <a class="nav-item" href="kanban.html" data-page="kanban.html"><span class="nav-icon">🗂️</span> 看板视图</a>
+      <a class="nav-item" href="reports.html" data-page="reports.html"><span class="nav-icon">📈</span> 统计报表</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <div class="page-title">📦 版本管理</div>
+      <div class="page-desc">管理所有版本的素材排期与进度</div>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <button class="btn btn-success" onclick="Modal.openVersionForm()">➕ 新建版本</button>
+      <select id="filterRank" onchange="renderVersions()">
+        <option value="">全部定级</option>
+        <option value="S">S 级</option>
+        <option value="A">A 级</option>
+        <option value="B">B 级</option>
+      </select>
+      <select id="filterStatus" onchange="renderVersions()">
+        <option value="">全部状态</option>
+        <option value="planning">计划中</option>
+        <option value="in-progress">进行中</option>
+        <option value="review">审核中</option>
+        <option value="done">已完成</option>
+      </select>
+      <input type="text" id="searchVersion" placeholder="🔍 搜索版本名称..." oninput="renderVersions()" style="min-width:200px">
+      <div class="toolbar-spacer"></div>
+      <div class="view-toggle">
+        <button class="view-btn active" id="btnGrid" onclick="setView('grid')" title="卡片视图">⊞</button>
+        <button class="view-btn" id="btnTable" onclick="setView('table')" title="表格视图">☰</button>
+      </div>
+    </div>
+
+    <!-- 内容容器 -->
+    <div id="versionsContainer"></div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="js/utils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/github-sync.js"></script>
+<script>
+let currentView = 'grid';
+
+function renderCurrentPage() { renderVersions(); }
+
+function setView(v) {
+  currentView = v;
+  document.getElementById('btnGrid').classList.toggle('active', v === 'grid');
+  document.getElementById('btnTable').classList.toggle('active', v === 'table');
+  renderVersions();
+}
+
+function getFiltered() {
+  const rank   = document.getElementById('filterRank').value;
+  const status = document.getElementById('filterStatus').value;
+  const search = document.getElementById('searchVersion').value.trim().toLowerCase();
+  return DataManager.versions
+    .filter(v => (!rank   || v.rank   === rank))
+    .filter(v => (!status || v.status === status))
+    .filter(v => (!search || v.name.toLowerCase().includes(search) ||
+                             (v.marketingOwner || '').toLowerCase().includes(search) ||
+                             (v.planningOwner  || '').toLowerCase().includes(search)))
+    .sort((a, b) => new Date(a.launchDate) - new Date(b.launchDate));
+}
+
+function renderVersions() {
+  const list = getFiltered();
+  const container = document.getElementById('versionsContainer');
+
+  if (currentView === 'grid') {
+    if (!list.length) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div>暂无版本数据，点击「新建版本」开始</div>`;
+      return;
+    }
+    container.innerHTML = `<div class="versions-grid">
+      ${list.map(v => {
+        const mats = DataManager.getMaterialsByVersion(v.id);
+        const done = mats.filter(m => m.status === 'done').length;
+        return `
+        <div class="version-card rank-${v.rank.toLowerCase()}" onclick="Modal.openVersionDetail('${v.id}')">
+          <div class="version-card-header">
+            <div class="version-card-title">${v.name}</div>
+            <span class="badge rank-${v.rank.toLowerCase()}">${v.rank}级</span>
+          </div>
+          <div class="version-card-info">
+            <div>📅 ${v.launchDate || '未设定'}${v.launchDate2 ? ' / ' + v.launchDate2 : ''}</div>
+            <div>👤 ${v.marketingOwner || '-'} / ${v.planningOwner || '-'}</div>
+            <div>🏷️ ${v.category || '-'} &nbsp;⭐ ${v.priority || '-'}</div>
+            <div><span class="badge ${Utils.statusClass(v.status)}">${Utils.statusLabel(v.status)}</span></div>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${v.progress||0}%"></div></div>
+          <div class="version-card-stats" style="margin-top:0.75rem">
+            <div><div class="stat-num">${v.progress||0}%</div><div class="stat-tag">进度</div></div>
+            <div><div class="stat-num">${mats.length}</div><div class="stat-tag">素材数</div></div>
+            <div><div class="stat-num">${done}</div><div class="stat-tag">已完成</div></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } else {
+    container.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>版本名称</th><th>定级</th><th>分类</th><th>上线日期</th>
+            <th>责任营销</th><th>责任策划</th><th>状态</th><th>进度</th><th>素材数</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.length ? list.map(v => {
+            const mats = DataManager.getMaterialsByVersion(v.id);
+            return `
+            <tr onclick="Modal.openVersionDetail('${v.id}')" style="cursor:pointer">
+              <td style="font-weight:600">${v.name}</td>
+              <td><span class="badge rank-${v.rank.toLowerCase()}">${v.rank}级</span></td>
+              <td>${v.category || '-'}</td>
+              <td>${v.launchDate || '-'}</td>
+              <td>${v.marketingOwner || '-'}</td>
+              <td>${v.planningOwner || '-'}</td>
+              <td><span class="badge ${Utils.statusClass(v.status)}">${Utils.statusLabel(v.status)}</span></td>
+              <td>
+                <div style="display:flex;align-items:center;gap:0.5rem">
+                  <div style="flex:1;min-width:80px">
+                    <div class="progress-bar" style="height:6px">
+                      <div class="progress-fill" style="width:${v.progress||0}%"></div>
+                    </div>
+                  </div>
+                  <span style="font-size:0.78rem;font-weight:600;width:32px">${v.progress||0}%</span>
+                </div>
+              </td>
+              <td>${mats.length}</td>
+              <td onclick="event.stopPropagation()">
+                <button class="btn-icon" onclick="Modal.openVersionForm('${v.id}')" title="编辑">✏️</button>
+                <button class="btn-icon" onclick="Modal.openMaterialForm(null,'${v.id}')" title="添加素材">➕</button>
+                <button class="btn-icon" onclick="confirmDeleteVersion('${v.id}')" title="删除">🗑️</button>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="10" class="empty-state">暂无数据</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+  }
+}
+
+function confirmDeleteVersion(id) {
+  if (!confirm('确定删除该版本及其所有素材？')) return;
+  DataManager.deleteVersion(id);
+  renderVersions();
+  Utils.toast('版本已删除', 'success');
+}
+
+DataManager.init();
+renderVersions();
+GitHubSync.updateStatusUI();
+Utils.highlightNav();
+</script>
+</body>
+</html>

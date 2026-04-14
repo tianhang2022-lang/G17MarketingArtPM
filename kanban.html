@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>看板视图 · 大话西游素材管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">🎮 大话西游素材管理 <span class="year-badge">2026</span></a>
+    <div class="header-actions">
+      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
+      <button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
+      <button class="header-btn" onclick="GitHubSync.configure()">⚙️ 配置</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-nav">
+      <span class="sidebar-section-title">主菜单</span>
+      <a class="nav-item" href="index.html"><span class="nav-icon">📊</span> 数据概览</a>
+      <a class="nav-item" href="versions.html"><span class="nav-icon">📦</span> 版本管理</a>
+      <a class="nav-item" href="materials.html"><span class="nav-icon">🎨</span> 素材管理</a>
+      <a class="nav-item active" href="kanban.html"><span class="nav-icon">🗂️</span> 看板视图</a>
+      <a class="nav-item" href="reports.html"><span class="nav-icon">📈</span> 统计报表</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:0.75rem">
+      <div>
+        <div class="page-title">🗂️ 看板视图</div>
+        <div class="page-desc">拖拽卡片或点击快捷按钮更新进度状态</div>
+      </div>
+      <button class="btn btn-success" onclick="Modal.openMaterialForm()">➕ 新建素材</button>
+    </div>
+
+    <!-- 时间筛选栏 -->
+    <div class="period-control-bar" style="margin-bottom:0.5rem">
+      <div class="period-left">
+        <span style="font-size:0.8rem;font-weight:600;color:var(--gray-600)">📅 时间范围</span>
+        <div class="period-quick-btns">
+          <button class="gtb-btn active" id="kbPeriodDefault" onclick="setKanbanPeriod('default')">前7天后1月</button>
+          <button class="gtb-btn" onclick="setKanbanPeriod('month')">本月</button>
+          <button class="gtb-btn" onclick="setKanbanPeriod('quarter')">本季度</button>
+          <button class="gtb-btn" onclick="setKanbanPeriod('all')">全部</button>
+        </div>
+        <input type="date" class="form-control" id="kbFrom" style="max-width:145px" onchange="clearKbPeriodActive();renderKanban()">
+        <span style="color:var(--gray-400);font-size:0.8rem">至</span>
+        <input type="date" class="form-control" id="kbTo"   style="max-width:145px" onchange="clearKbPeriodActive();renderKanban()">
+        <span id="kbPeriodLabel" style="font-size:0.72rem;color:var(--gray-400)"></span>
+      </div>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar" style="flex-wrap:wrap;gap:0.5rem">
+      <select id="kanbanVersion" onchange="renderKanban()">
+        <option value="">📦 全部版本</option>
+      </select>
+      <select id="kanbanType" onchange="renderKanban()">
+        <option value="">🎨 全部类型</option>
+        <option value="design">美术设计</option>
+        <option value="interactive">交互/H5</option>
+        <option value="video">视频</option>
+        <option value="copy">文案</option>
+        <option value="art">原画</option>
+      </select>
+      <select id="kanbanAssignee" onchange="renderKanban()">
+        <option value="">👤 全部负责人</option>
+      </select>
+      <select id="kanbanPriority" onchange="renderKanban()">
+        <option value="">🔥 全部优先级</option>
+        <option value="high">高优先级</option>
+        <option value="medium">中优先级</option>
+        <option value="low">低优先级</option>
+      </select>
+      <input type="text" id="kanbanSearch" placeholder="🔍 搜索..." oninput="renderKanban()" style="min-width:150px">
+      <div class="toolbar-spacer"></div>
+      <!-- 紧凑/展开模式 -->
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;color:var(--gray-600);cursor:pointer">
+        <input type="checkbox" id="kanbanCompact" onchange="renderKanban()"> 紧凑模式
+      </label>
+      <!-- 显示图片开关 -->
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;color:var(--gray-600);cursor:pointer">
+        <input type="checkbox" id="kanbanShowImg" checked onchange="renderKanban()"> 显示图片
+      </label>
+      <!-- 统计行 -->
+      <div id="kanbanStats" style="font-size:0.78rem;color:var(--gray-500);white-space:nowrap"></div>
+    </div>
+
+    <!-- 看板区域 -->
+    <div class="kanban-board" id="kanbanBoard"></div>
+  </main>
+</div>
+
+<!-- 图片灯箱 -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">×</button>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<div id="toast-container"></div>
+
+<script src="js/utils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/github-sync.js"></script>
+<script>
+const COLUMNS = [
+  { status:'todo',        label:'待开始',  color:'#6b7280', icon:'⬜' },
+  { status:'in-progress', label:'进行中',  color:'#f59e0b', icon:'🟡' },
+  { status:'review',      label:'审核中',  color:'#3b82f6', icon:'🔵' },
+  { status:'done',        label:'已完成',  color:'#10b981', icon:'✅' },
+];
+
+// ---------- 时间范围 ----------
+function setKanbanPeriod(mode) {
+  const t = new Date();
+  let from = '', to = '';
+  if (mode === 'default') {
+    from = new Date(t.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+    to   = new Date(t.getFullYear(), t.getMonth() + 1, t.getDate()).toISOString().slice(0, 10);
+  } else if (mode === 'month') {
+    from = new Date(t.getFullYear(), t.getMonth(), 1).toISOString().slice(0, 10);
+    to   = new Date(t.getFullYear(), t.getMonth() + 1, 0).toISOString().slice(0, 10);
+  } else if (mode === 'quarter') {
+    const q = Math.floor(t.getMonth() / 3);
+    from = new Date(t.getFullYear(), q * 3, 1).toISOString().slice(0, 10);
+    to   = new Date(t.getFullYear(), q * 3 + 3, 0).toISOString().slice(0, 10);
+  } else {
+    // 'all' — 清空
+    from = '';
+    to   = '';
+  }
+  document.getElementById('kbFrom').value = from;
+  document.getElementById('kbTo').value   = to;
+  // 激活按钮
+  document.querySelectorAll('.period-quick-btns .gtb-btn').forEach(b => b.classList.remove('active'));
+  const idMap = { default:'kbPeriodDefault' };
+  if (idMap[mode]) document.getElementById(idMap[mode])?.classList.add('active');
+  // 更新说明文字
+  const lbl = document.getElementById('kbPeriodLabel');
+  if (lbl) lbl.textContent = from && to ? `${from} ~ ${to}` : '显示全部时间';
+  renderKanban();
+}
+function clearKbPeriodActive() {
+  document.querySelectorAll('.period-quick-btns .gtb-btn').forEach(b => b.classList.remove('active'));
+  const lbl = document.getElementById('kbPeriodLabel');
+  const f = document.getElementById('kbFrom').value;
+  const t2 = document.getElementById('kbTo').value;
+  if (lbl) lbl.textContent = f && t2 ? `${f} ~ ${t2}` : '显示全部时间';
+}
+
+// ---------- 初始化筛选下拉 ----------
+function initFilters() {
+  const vSel = document.getElementById('kanbanVersion');
+  DataManager.versions.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id; opt.textContent = v.name;
+    vSel.appendChild(opt);
+  });
+  const aSel = document.getElementById('kanbanAssignee');
+  const assignees = [...new Set(DataManager.materials.map(m=>m.assignee).filter(Boolean))].sort();
+  assignees.forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a; opt.textContent = a;
+    aSel.appendChild(opt);
+  });
+  // URL 参数预设筛选（由首页统计卡片点击跳转）
+  const params = new URLSearchParams(location.search);
+  const urlStatus = params.get('status');
+  if (urlStatus) {
+    // 高亮并滚动到对应列
+    setTimeout(() => {
+      const col = document.getElementById('kcol-' + urlStatus);
+      if (col) {
+        col.style.outline = '2px solid var(--primary)';
+        col.style.outlineOffset = '2px';
+        col.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        setTimeout(() => { col.style.outline = ''; col.style.outlineOffset = ''; }, 2000);
+      }
+    }, 200);
+  }
+  if (params.get('version')) {
+    vSel.value = params.get('version');
+  }
+}
+
+function getFiltered() {
+  const vid      = document.getElementById('kanbanVersion').value;
+  const type     = document.getElementById('kanbanType').value;
+  const assignee = document.getElementById('kanbanAssignee').value;
+  const priority = document.getElementById('kanbanPriority').value;
+  const search   = document.getElementById('kanbanSearch').value.trim().toLowerCase();
+  const from     = document.getElementById('kbFrom').value;
+  const to       = document.getElementById('kbTo').value;
+
+  // 时间范围：判断素材所属版本的上线日是否在窗口内
+  // 同时保留：版本无上线日 但版本处于进行中 的素材也纳入
+  const periodVids = from || to ? new Set(
+    DataManager.versions.filter(v => {
+      const d = v.launchDate || '';
+      if (!d) return v.status === 'in-progress'; // 无截止日的进行中版本纳入
+      if (from && d < from) return false;
+      if (to   && d > to)   return false;
+      return true;
+    }).map(v => v.id)
+  ) : null; // null = 不限
+
+  return DataManager.materials
+    .filter(m => !periodVids || periodVids.has(m.versionId))
+    .filter(m => !vid      || m.versionId === vid)
+    .filter(m => !type     || m.type      === type)
+    .filter(m => !assignee || m.assignee  === assignee)
+    .filter(m => !priority || m.priority  === priority)
+    .filter(m => !search   ||
+      m.name.toLowerCase().includes(search) ||
+      (m.assignee||'').toLowerCase().includes(search) ||
+      (m.brief||'').toLowerCase().includes(search));
+}
+
+function renderCurrentPage() {
+  renderKanban();
+}
+
+// ---------- 主渲染 ----------
+function renderKanban() {
+  const materials = getFiltered();
+  const board = document.getElementById('kanbanBoard');
+  const compact  = document.getElementById('kanbanCompact').checked;
+  const showImg  = document.getElementById('kanbanShowImg').checked;
+
+  // 更新统计
+  document.getElementById('kanbanStats').textContent =
+    `共 ${materials.length} 条素材 · 待开始 ${materials.filter(m=>m.status==='todo').length} · 进行中 ${materials.filter(m=>m.status==='in-progress').length} · 审核中 ${materials.filter(m=>m.status==='review').length} · 完成 ${materials.filter(m=>m.status==='done').length}`;
+
+  board.innerHTML = COLUMNS.map(col => {
+    const cards = materials.filter(m => m.status === col.status)
+      .sort((a,b) => {
+        const p = {high:0,medium:1,low:2};
+        return (p[a.priority]??1) - (p[b.priority]??1);
+      });
+
+    return `
+    <div class="kanban-col" id="kcol-${col.status}">
+      <div class="kanban-col-header" style="border-top:3px solid ${col.color}">
+        <span class="kanban-col-title">
+          <span class="kanban-col-dot" style="background:${col.color}"></span>
+          ${col.label}
+        </span>
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <span class="kanban-count">${cards.length}</span>
+          <button class="kanban-add-btn" onclick="Modal.openMaterialForm(null,null,'${col.status}')" title="在此列新建">+</button>
+        </div>
+      </div>
+      <div class="kanban-col-body" ondragover="event.preventDefault()" ondrop="handleDrop(event,'${col.status}')">
+        ${cards.length ? cards.map(m => renderCard(m, col, compact, showImg)).join('') :
+          `<div class="kanban-empty-col">
+            <span style="font-size:1.5rem;opacity:0.3">${col.icon}</span>
+            <span>暂无${col.label}</span>
+          </div>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ---------- 单张卡片 ----------
+function renderCard(m, col, compact, showImg) {
+  const v = DataManager.getVersion(m.versionId);
+  // 找封面图（第一张图片类型文件）
+  const imgFiles = (m.files||[]).filter(f => f.mime && f.mime.startsWith('image/'));
+  const coverImg = imgFiles.length > 0 ? imgFiles[0] : null;
+  const hasImg = !!coverImg;
+
+  const priorityColors = { high:'#ef4444', medium:'#f59e0b', low:'#10b981' };
+  const priorityLabels = { high:'高', medium:'中', low:'低' };
+  const typeLabels = { design:'美术设计', interactive:'交互/H5', video:'视频', copy:'文案', art:'原画' };
+
+  // 逾期检测
+  const now = Date.now();
+  const overdue = m.dueDate && m.status !== 'done' && new Date(m.dueDate) < now;
+
+  if (compact) {
+    return `
+    <div class="kanban-card kanban-card-compact" draggable="true"
+      ondragstart="handleDragStart(event,'${m.id}')"
+      onclick="Modal.openMaterialDetail('${m.id}')">
+      <div style="display:flex;align-items:center;gap:0.4rem;min-width:0">
+        <span style="flex-shrink:0;width:4px;height:24px;border-radius:2px;background:${priorityColors[m.priority]||'#ccc'}"></span>
+        <span style="font-size:0.75rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${Utils.typeIcon(m.type)} ${m.name}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.4rem;flex-shrink:0" onclick="event.stopPropagation()">
+        <span style="font-size:0.65rem;color:var(--gray-500)">${m.assignee||'-'}</span>
+        <button class="kanban-quick-btn" onclick="quickStatus('${m.id}','${nextStatus(col.status)}')" title="下一阶段">→</button>
+      </div>
+    </div>`;
+  }
+
+  return `
+  <div class="kanban-card${overdue?' kanban-card-overdue':''}" draggable="true"
+    ondragstart="handleDragStart(event,'${m.id}')"
+    onclick="Modal.openMaterialDetail('${m.id}')">
+    ${showImg && hasImg ? `
+    <div class="kanban-thumb-wrap" onclick="event.stopPropagation();openLightbox('${coverImg.data}')">
+      <img class="kanban-thumb" src="${coverImg.data}" alt="${m.name}" loading="lazy">
+      ${imgFiles.length > 1 ? `<span class="kanban-thumb-count">+${imgFiles.length-1}</span>` : ''}
+      <div class="kanban-thumb-overlay">🔍 查看大图</div>
+    </div>` : ''}
+    <div class="kanban-card-body">
+      <div class="kanban-card-title">
+        <span>${Utils.typeIcon(m.type)} ${m.name}</span>
+        ${overdue ? `<span class="kanban-overdue-badge" title="已逾期">⚠️</span>` : ''}
+      </div>
+      <div class="kanban-card-tags">
+        <span class="kc-tag" style="background:${priorityColors[m.priority]||'#ccc'}22;color:${priorityColors[m.priority]||'#6b7280'};border:1px solid ${priorityColors[m.priority]||'#ccc'}44">
+          ${priorityLabels[m.priority]||'普通'}优先
+        </span>
+        <span class="kc-tag kc-tag-gray">${typeLabels[m.type]||m.type}</span>
+      </div>
+      ${m.brief ? `<div class="kanban-brief" title="${m.brief}">${m.brief.slice(0,60)}${m.brief.length>60?'…':''}</div>` : ''}
+      <div class="kanban-card-meta">
+        ${v ? `<span>📦 ${v.name}</span>` : ''}
+        ${m.assignee ? `<span>👤 ${m.assignee}</span>` : '<span style="color:var(--gray-400)">未分配</span>'}
+        ${m.dueDate ? `<span style="color:${overdue?'var(--danger)':'var(--gray-500)'}">${overdue?'⚠️ ':''} ${m.dueDate}</span>` : ''}
+        ${imgFiles.length ? `<span style="color:var(--info)">🖼️ ${imgFiles.length}张</span>` : ''}
+      </div>
+    </div>
+    <!-- 操作按钮行 -->
+    <div class="kanban-card-actions" onclick="event.stopPropagation()">
+      <div style="display:flex;gap:0.25rem">
+        ${col.status !== 'in-progress' ? `<button class="kanban-act-btn blue" onclick="quickStatus('${m.id}','in-progress')" title="进行中">▶</button>` : ''}
+        ${col.status !== 'review' ? `<button class="kanban-act-btn" onclick="quickStatus('${m.id}','review')" title="审核中" style="background:#3b82f622;color:#3b82f6">👁</button>` : ''}
+        ${col.status !== 'done' ? `<button class="kanban-act-btn green" onclick="quickStatus('${m.id}','done')" title="完成">✓</button>` : ''}
+      </div>
+      <div style="display:flex;gap:0.25rem">
+        <button class="kanban-act-btn gray" onclick="openKanbanUpload('${m.id}')" title="上传图片">📎</button>
+        <button class="kanban-act-btn gray" onclick="Modal.openMaterialForm('${m.id}')" title="编辑">✏️</button>
+        <button class="kanban-act-btn red" onclick="confirmKanbanDelete('${m.id}')" title="删除">✕</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ---------- 快捷操作 ----------
+function nextStatus(cur) {
+  const order = ['todo','in-progress','review','done'];
+  const idx = order.indexOf(cur);
+  return order[Math.min(idx+1, order.length-1)];
+}
+
+function quickStatus(id, status) {
+  DataManager.updateMaterial(id, { status });
+  Utils.toast(`已更新为「${Utils.statusLabel(status)}」`, 'success');
+  renderKanban();
+}
+
+function confirmKanbanDelete(id) {
+  const m = DataManager.getMaterial(id);
+  if (!confirm(`确定删除素材「${m?.name}」？`)) return;
+  DataManager.deleteMaterial(id);
+  Utils.toast('素材已删除', 'success');
+  renderKanban();
+}
+
+// ---------- 看板内快速上传图片 ----------
+function openKanbanUpload(materialId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.onchange = e => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    let count = 0;
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        DataManager.addFile(materialId, {
+          id: Utils.uuid(), name: file.name,
+          mime: file.type, size: file.size,
+          data: ev.target.result,
+          uploadedAt: new Date().toISOString()
+        });
+        count++;
+        if (count === files.length) {
+          Utils.toast(`✅ 已上传 ${count} 张图片`, 'success');
+          renderKanban();
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+  input.click();
+}
+
+// ---------- 拖拽排序 ----------
+let dragId = null;
+function handleDragStart(e, id) {
+  dragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.style.opacity = '0.5';
+}
+function handleDrop(e, status) {
+  e.preventDefault();
+  if (!dragId) return;
+  DataManager.updateMaterial(dragId, { status });
+  Utils.toast(`已移动到「${Utils.statusLabel(status)}」`, 'success');
+  dragId = null;
+  renderKanban();
+}
+
+// ---------- 图片灯箱 ----------
+function openLightbox(src) {
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightbox').classList.add('active');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+  document.getElementById('lightboxImg').src = '';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+DataManager.init();
+initFilters();
+setKanbanPeriod('default'); // 初始时间窗口：前7天 ~ 后1个月，内部已调用 renderKanban
+GitHubSync.updateStatusUI();
+Utils.highlightNav();
+</script>
+</body>
+</html>

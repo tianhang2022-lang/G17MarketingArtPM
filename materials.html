@@ -1,0 +1,272 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>素材管理 · 大话西游素材管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">🎮 大话西游素材管理 <span class="year-badge">2026</span></a>
+    <div class="header-actions">
+      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
+      <button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
+      <button class="header-btn" onclick="GitHubSync.pull()">⬇️ 拉取</button>
+      <button class="header-btn" onclick="GitHubSync.configure()">⚙️ 配置</button>
+      <button class="header-btn" onclick="DataManager.exportCSV()">📊 导出CSV</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-nav">
+      <span class="sidebar-section-title">主菜单</span>
+      <a class="nav-item" href="index.html"><span class="nav-icon">📊</span> 数据概览</a>
+      <a class="nav-item" href="versions.html"><span class="nav-icon">📦</span> 版本管理</a>
+      <a class="nav-item active" href="materials.html"><span class="nav-icon">🎨</span> 素材管理</a>
+      <a class="nav-item" href="kanban.html"><span class="nav-icon">🗂️</span> 看板视图</a>
+      <a class="nav-item" href="reports.html"><span class="nav-icon">📈</span> 统计报表</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <div class="page-title">🎨 素材管理</div>
+      <div class="page-desc">管理所有美术素材的制作状态与进度</div>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <button class="btn btn-success" onclick="Modal.openMaterialForm()">➕ 新建素材</button>
+      <select id="filterVersion" onchange="renderMaterials()">
+        <option value="">全部版本</option>
+      </select>
+      <select id="filterType" onchange="renderMaterials()">
+        <option value="">全部类型</option>
+        <option value="design">美术设计</option>
+        <option value="art">原画</option>
+        <option value="video">视频</option>
+        <option value="copy">文案</option>
+        <option value="interactive">交互设计</option>
+      </select>
+      <select id="filterMStatus" onchange="renderMaterials()">
+        <option value="">全部状态</option>
+        <option value="todo">待开始</option>
+        <option value="in-progress">进行中</option>
+        <option value="review">审核中</option>
+        <option value="done">已完成</option>
+      </select>
+      <select id="filterPriority" onchange="renderMaterials()">
+        <option value="">全部优先级</option>
+        <option value="high">高</option>
+        <option value="medium">中</option>
+        <option value="low">低</option>
+      </select>
+      <input type="text" id="searchMaterial" placeholder="🔍 搜索素材名称..." oninput="renderMaterials()" style="min-width:180px">
+      <div class="toolbar-spacer"></div>
+      <div class="view-toggle">
+        <button class="view-btn active" id="btnGrid" onclick="setView('grid')" title="卡片">⊞</button>
+        <button class="view-btn" id="btnTable" onclick="setView('table')" title="表格">☰</button>
+      </div>
+    </div>
+
+    <!-- 批量操作栏 -->
+    <div class="batch-bar" id="batchBar">
+      <span id="batchCount">已选 0 项</span>
+      <button class="btn btn-sm" onclick="batchUpdateStatus('done')">✅ 标记完成</button>
+      <button class="btn btn-sm" onclick="batchUpdateStatus('in-progress')">▶️ 标记进行中</button>
+      <button class="btn btn-danger btn-sm" onclick="batchDelete()">🗑️ 批量删除</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearSelection()">✕ 取消</button>
+    </div>
+
+    <!-- 内容容器 -->
+    <div id="materialsContainer"></div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="js/utils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/github-sync.js"></script>
+<script>
+let currentView = 'grid';
+let selectedIds = new Set();
+
+function renderCurrentPage() { renderMaterials(); }
+
+function setView(v) {
+  currentView = v;
+  document.getElementById('btnGrid').classList.toggle('active', v === 'grid');
+  document.getElementById('btnTable').classList.toggle('active', v === 'table');
+  renderMaterials();
+}
+
+// 初始化版本筛选下拉
+function initVersionFilter() {
+  const sel = document.getElementById('filterVersion');
+  DataManager.versions.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id; opt.textContent = v.name;
+    sel.appendChild(opt);
+  });
+}
+
+function getFiltered() {
+  const vid      = document.getElementById('filterVersion').value;
+  const type     = document.getElementById('filterType').value;
+  const status   = document.getElementById('filterMStatus').value;
+  const priority = document.getElementById('filterPriority').value;
+  const search   = document.getElementById('searchMaterial').value.trim().toLowerCase();
+  return DataManager.materials
+    .filter(m => !vid      || m.versionId === vid)
+    .filter(m => !type     || m.type      === type)
+    .filter(m => !status   || m.status    === status)
+    .filter(m => !priority || m.priority  === priority)
+    .filter(m => !search   || m.name.toLowerCase().includes(search) ||
+                              (m.assignee || '').toLowerCase().includes(search))
+    .sort((a, b) => {
+      const p = { high:0, medium:1, low:2 };
+      return (p[a.priority] || 1) - (p[b.priority] || 1);
+    });
+}
+
+function renderMaterials() {
+  const list = getFiltered();
+  const container = document.getElementById('materialsContainer');
+
+  if (currentView === 'grid') {
+    if (!list.length) {
+      container.innerHTML = `<div class="empty-state"><div class="empty-icon">🎭</div>暂无素材，点击「新建素材」开始</div>`;
+      return;
+    }
+    container.innerHTML = `<div class="materials-grid">
+      ${list.map(m => {
+        const v = DataManager.getVersion(m.versionId);
+        return `
+        <div class="material-card" onclick="Modal.openMaterialDetail('${m.id}')">
+          <input type="checkbox" style="position:absolute;top:0.75rem;left:0.75rem" 
+            ${selectedIds.has(m.id)?'checked':''}
+            onclick="event.stopPropagation();toggleSelect('${m.id}',this.checked)">
+          <div class="material-thumb">${Utils.typeIcon(m.type)}</div>
+          <div class="material-name">${m.name}</div>
+          <div class="material-meta">
+            <div>📦 ${v ? v.name : '-'}</div>
+            <div>👤 ${m.assignee || '未分配'}</div>
+            <div><span class="badge ${Utils.statusClass(m.status)}">${Utils.statusLabel(m.status)}</span></div>
+            <div><span class="badge ${Utils.priorityClass(m.priority)}">${Utils.priorityLabel(m.priority)}</span></div>
+            ${m.dueDate ? `<div>📅 ${m.dueDate}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } else {
+    container.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox" onchange="toggleAll(this.checked)"></th>
+            <th>素材名称</th><th>类型</th><th>所属版本</th><th>状态</th>
+            <th>负责人</th><th>优先级</th><th>截止日期</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.length ? list.map(m => {
+            const v = DataManager.getVersion(m.versionId);
+            return `
+            <tr onclick="Modal.openMaterialDetail('${m.id}')" style="cursor:pointer">
+              <td onclick="event.stopPropagation()">
+                <input type="checkbox" ${selectedIds.has(m.id)?'checked':''}
+                  onchange="toggleSelect('${m.id}',this.checked)">
+              </td>
+              <td style="font-weight:600">${Utils.typeIcon(m.type)} ${m.name}</td>
+              <td>${Utils.typeLabel(m.type)}</td>
+              <td>${v ? v.name : '-'}</td>
+              <td><span class="badge ${Utils.statusClass(m.status)}">${Utils.statusLabel(m.status)}</span></td>
+              <td>${m.assignee || '-'}</td>
+              <td><span class="badge ${Utils.priorityClass(m.priority)}">${Utils.priorityLabel(m.priority)}</span></td>
+              <td>${m.dueDate || '-'}</td>
+              <td onclick="event.stopPropagation()">
+                <button class="btn-icon" onclick="Modal.openMaterialForm('${m.id}')" title="编辑">✏️</button>
+                <button class="btn-icon" onclick="confirmDelete('${m.id}')" title="删除">🗑️</button>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="9" class="empty-state">暂无数据</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+  }
+}
+
+// ---- 勾选 ----
+function toggleSelect(id, checked) {
+  checked ? selectedIds.add(id) : selectedIds.delete(id);
+  updateBatchBar();
+}
+function toggleAll(checked) {
+  const list = getFiltered();
+  list.forEach(m => checked ? selectedIds.add(m.id) : selectedIds.delete(m.id));
+  updateBatchBar();
+  renderMaterials();
+}
+function clearSelection() {
+  selectedIds.clear();
+  updateBatchBar();
+  renderMaterials();
+}
+function updateBatchBar() {
+  const bar = document.getElementById('batchBar');
+  bar.classList.toggle('active', selectedIds.size > 0);
+  document.getElementById('batchCount').textContent = `已选 ${selectedIds.size} 项`;
+}
+
+// ---- 批量操作 ----
+function batchUpdateStatus(status) {
+  selectedIds.forEach(id => DataManager.updateMaterial(id, { status }));
+  Utils.toast(`已将 ${selectedIds.size} 条素材更新为「${Utils.statusLabel(status)}」`, 'success');
+  clearSelection();
+}
+function batchDelete() {
+  if (!confirm(`确定删除选中的 ${selectedIds.size} 条素材？`)) return;
+  selectedIds.forEach(id => DataManager.deleteMaterial(id));
+  Utils.toast('批量删除完成', 'success');
+  clearSelection();
+}
+function confirmDelete(id) {
+  if (!confirm('确定删除该素材？')) return;
+  DataManager.deleteMaterial(id);
+  renderMaterials();
+  Utils.toast('素材已删除', 'success');
+}
+
+// 处理 URL 参数预设筛选（从首页统计卡片跳转过来）
+function applyUrlParams() {
+  const params = new URLSearchParams(location.search);
+  const status = params.get('status');
+  const vid    = params.get('version');
+  if (status) {
+    const sel = document.getElementById('filterMStatus');
+    if (sel) { sel.value = status; }
+  }
+  if (vid) {
+    const sel = document.getElementById('filterVersion');
+    if (sel) { sel.value = vid; }
+  }
+}
+
+DataManager.init();
+initVersionFilter();
+applyUrlParams();
+renderMaterials();
+GitHubSync.updateStatusUI();
+Utils.highlightNav();
+</script>
+</body>
+</html>

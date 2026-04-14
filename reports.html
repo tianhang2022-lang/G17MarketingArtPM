@@ -1,0 +1,376 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>统计报表 · 大话西游素材管理系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">🎮 大话西游素材管理 <span class="year-badge">2026</span></a>
+    <div class="header-actions">
+      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
+      <button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
+      <button class="header-btn" onclick="DataManager.exportCSV()">📊 导出CSV</button>
+      <button class="header-btn" onclick="DataManager.exportJSON()">📤 导出JSON</button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-nav">
+      <span class="sidebar-section-title">主菜单</span>
+      <a class="nav-item" href="index.html"><span class="nav-icon">📊</span> 数据概览</a>
+      <a class="nav-item" href="versions.html"><span class="nav-icon">📦</span> 版本管理</a>
+      <a class="nav-item" href="materials.html"><span class="nav-icon">🎨</span> 素材管理</a>
+      <a class="nav-item" href="kanban.html"><span class="nav-icon">🗂️</span> 看板视图</a>
+      <a class="nav-item active" href="reports.html"><span class="nav-icon">📈</span> 统计报表</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="page-header">
+      <div class="page-title">📈 统计报表</div>
+      <div class="page-desc">全面分析版本与素材的生产数据</div>
+    </div>
+
+    <!-- 时间筛选工具栏 -->
+    <div class="toolbar" style="flex-wrap:wrap;margin-bottom:1rem;align-items:center">
+      <span style="font-size:0.875rem;font-weight:600;color:var(--gray-700)">📅 时间范围</span>
+      <div class="gtb-btns">
+        <button class="gtb-btn active" id="rqDefault" onclick="setReportRange('default')">前7天后1月</button>
+        <button class="gtb-btn" id="rqAll" onclick="setReportRange('')">全部</button>
+        <button class="gtb-btn" id="rqMonth" onclick="setReportRange('month')">本月</button>
+        <button class="gtb-btn" id="rqQ" onclick="setReportRange('quarter')">本季度</button>
+        <button class="gtb-btn" id="rqYear" onclick="setReportRange('year')">今年</button>
+      </div>
+      <span style="font-size:0.8rem;color:var(--gray-500)">自定义：</span>
+      <input type="date" class="form-control" id="rDateFrom" style="max-width:160px" onchange="clearReportActive();renderReports()">
+      <span style="color:var(--gray-400)">至</span>
+      <input type="date" class="form-control" id="rDateTo" style="max-width:160px" onchange="clearReportActive();renderReports()">
+      <div class="toolbar-spacer"></div>
+      <button class="btn btn-ghost btn-sm" onclick="DataManager.exportCSV()">📊 导出CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="DataManager.exportJSON()">📤 导出JSON</button>
+    </div>
+
+    <!-- 摘要卡片 -->
+    <div class="stats-grid" id="summaryCards"></div>
+
+    <!-- 版本状态 + 素材类型（从首页移入） -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem">
+      <div class="chart-card">
+        <div class="chart-title">📦 版本状态分布</div>
+        <div class="bar-list" id="rChartVersionStatus"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">🎨 素材类型分布</div>
+        <div class="bar-list" id="rChartMaterialType"></div>
+      </div>
+    </div>
+    <!-- 各版本完成进度 -->
+    <div class="chart-card" style="margin-top:1rem">
+      <div class="chart-title">🚀 各版本完成进度</div>
+      <div id="rChartVersionProgress"></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1rem">
+      <!-- 版本状态分布 -->
+      <div class="chart-card">
+        <div class="chart-title">📦 版本状态分布</div>
+        <div id="chartVersionStatus"></div>
+      </div>
+      <!-- 素材状态分布 -->
+      <div class="chart-card">
+        <div class="chart-title">🎨 素材状态分布</div>
+        <div id="chartMaterialStatus"></div>
+      </div>
+      <!-- 素材类型分布 -->
+      <div class="chart-card">
+        <div class="chart-title">🗂️ 素材类型分布</div>
+        <div id="chartMaterialType"></div>
+      </div>
+      <!-- 版本定级分布 -->
+      <div class="chart-card">
+        <div class="chart-title">⭐ 版本定级分布</div>
+        <div id="chartVersionRank"></div>
+      </div>
+    </div>
+
+    <!-- 团队工作量 -->
+    <div class="chart-card" style="margin-top:1rem">
+      <div class="chart-title">👥 团队成员工作量</div>
+      <div class="team-grid" id="teamGrid"></div>
+    </div>
+
+    <!-- 各版本详细进度 -->
+    <div class="chart-card" style="margin-top:1rem">
+      <div class="chart-title">🚀 各版本详细进度</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>版本名称</th><th>定级</th><th>上线日期</th>
+              <th>素材总数</th><th>待开始</th><th>进行中</th><th>审核中</th><th>已完成</th><th>进度</th>
+            </tr>
+          </thead>
+          <tbody id="versionDetailTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 逾期未完成素材 -->
+    <div class="chart-card" style="margin-top:1rem">
+      <div class="chart-title" style="color:var(--danger)">🚨 逾期未完成素材</div>
+      <div id="overdueList"></div>
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="js/utils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/modals.js"></script>
+<script src="js/github-sync.js"></script>
+<script>
+function renderCurrentPage() { renderReports(); }
+
+// ---------- 时间范围快捷设置 ----------
+function setReportRange(mode) {
+  const today = new Date();
+  let from = '', to = '';
+  if (mode === 'default') {
+    from = new Date(today.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+    to   = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate()).toISOString().slice(0, 10);
+  } else if (mode === 'month') {
+    from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0,10);
+    to   = new Date(today.getFullYear(), today.getMonth()+1, 0).toISOString().slice(0,10);
+  } else if (mode === 'quarter') {
+    const q = Math.floor(today.getMonth() / 3);
+    from = new Date(today.getFullYear(), q*3, 1).toISOString().slice(0,10);
+    to   = new Date(today.getFullYear(), q*3+3, 0).toISOString().slice(0,10);
+  } else if (mode === 'year') {
+    from = `${today.getFullYear()}-01-01`;
+    to   = `${today.getFullYear()}-12-31`;
+  }
+  document.getElementById('rDateFrom').value = from;
+  document.getElementById('rDateTo').value   = to;
+  // 激活按钮样式
+  ['rqDefault','rqAll','rqMonth','rqQ','rqYear'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+  const btns = { default:'rqDefault', '':'rqAll', month:'rqMonth', quarter:'rqQ', year:'rqYear' };
+  document.getElementById(btns[mode])?.classList.add('active');
+  renderReports();
+}
+
+function clearReportActive() {
+  ['rqDefault','rqAll','rqMonth','rqQ','rqYear'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+}
+
+// ---------- 获取筛选后的数据 ----------
+function getFilteredData() {
+  const from = document.getElementById('rDateFrom').value;
+  const to   = document.getElementById('rDateTo').value;
+  const V = DataManager.versions.filter(v => {
+    if (!from && !to) return true;
+    const d = v.launchDate || v.createdAt?.slice(0,10) || '';
+    if (from && d && d < from) return false;
+    if (to   && d && d > to)   return false;
+    return true;
+  });
+  const vids = new Set(V.map(v => v.id));
+  const M = DataManager.materials.filter(m => {
+    if (!from && !to) return true;
+    if (!vids.has(m.versionId)) return false;
+    return true;
+  });
+  return { V, M };
+}
+
+function barChart(container, data, colorClass) {
+  // data: [{label, value}]
+  const max = Math.max(...data.map(d => d.value), 1);
+  container.innerHTML = `<div class="bar-list">
+    ${data.map(d => `
+      <div class="bar-row">
+        <div class="bar-label">${d.label}</div>
+        <div class="bar-track">
+          <div class="bar-fill ${colorClass || 'done'}" style="width:${d.value/max*100}%"></div>
+        </div>
+        <div class="bar-num">${d.value}</div>
+      </div>`).join('')}
+  </div>`;
+}
+
+function renderReports() {
+  const { V, M } = getFilteredData();
+  const from = document.getElementById('rDateFrom').value;
+  const to   = document.getElementById('rDateTo').value;
+
+  // 摘要
+  const done = M.filter(m => m.status === 'done').length;
+  const doneRate = M.length ? Math.round(done / M.length * 100) : 0;
+  const now = Date.now();
+  const overdue = M.filter(m => m.dueDate && m.status !== 'done' && new Date(m.dueDate) < now).length;
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="stat-card"><div class="stat-label">版本总数</div><div class="stat-value">${V.length}</div></div>
+    <div class="stat-card green"><div class="stat-label">素材总数</div><div class="stat-value">${M.length}</div></div>
+    <div class="stat-card" style="border-left-color:var(--success)">
+      <div class="stat-label">整体完成率</div><div class="stat-value">${doneRate}%</div>
+      <div class="stat-sub">${done} / ${M.length} 已完成</div>
+    </div>
+    <div class="stat-card" style="border-left-color:var(--info)">
+      <div class="stat-label">审核中</div><div class="stat-value">${M.filter(m=>m.status==='review').length}</div>
+    </div>
+    <div class="stat-card red"><div class="stat-label">逾期未完成</div><div class="stat-value">${overdue}</div></div>`;
+
+  // 版本状态（reports顶部大图表 + 下方小图表）
+  const vstMap = { planning:'计划中', 'in-progress':'进行中', review:'审核中', done:'已完成' };
+  const vsc = {}; V.forEach(v => { vsc[v.status] = (vsc[v.status]||0)+1; });
+  const vscData = Object.entries(vsc).map(([s,c]) => ({ label: vstMap[s]||s, value:c }));
+  barChart(document.getElementById('chartVersionStatus'), vscData, 'done');
+  barChart(document.getElementById('rChartVersionStatus'), vscData, 'done');
+
+  // 素材类型（顶部大图表）
+  const typeMap2 = { design:'美术设计', art:'原画', video:'视频', copy:'文案', interactive:'交互' };
+  const tc2 = {}; M.forEach(m => { tc2[m.type] = (tc2[m.type]||0)+1; });
+  barChart(document.getElementById('rChartMaterialType'),
+    Object.entries(tc2).map(([t,c]) => ({ label: typeMap2[t]||t, value:c })), 'done');
+
+  // 各版本完成进度（顶部大图表）
+  const vProgress = document.getElementById('rChartVersionProgress');
+  vProgress.innerHTML = V.length ? V.sort((a,b)=>new Date(a.launchDate)-new Date(b.launchDate)).map(v => {
+    const mats = DataManager.getMaterialsByVersion(v.id);
+    const vDone = mats.filter(m=>m.status==='done').length;
+    const rankClr = v.rank==='S'?'#667eea':v.rank==='A'?'#f59e0b':'#6b7280';
+    return `<div style="margin-bottom:0.75rem;cursor:pointer" onclick="Modal.openVersionDetail('${v.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem">
+        <span style="font-size:0.82rem;font-weight:500">${v.name}</span>
+        <div style="display:flex;gap:0.75rem;font-size:0.72rem;color:var(--gray-500)">
+          <span>📅 ${v.launchDate||'-'}</span>
+          <span>${vDone}/${mats.length}</span>
+          <span style="font-weight:700;color:${rankClr}">${v.progress||0}%</span>
+        </div>
+      </div>
+      <div class="progress-bar" style="height:7px">
+        <div class="progress-fill" style="width:${v.progress||0}%;background:${rankClr}"></div>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty-state" style="padding:1rem">暂无版本</div>';
+
+  // 素材状态
+  const mstMap = { todo:'待开始', 'in-progress':'进行中', review:'审核中', done:'已完成' };
+  const mstColors = { todo:'todo', 'in-progress':'progress', review:'review', done:'done' };
+  const msc = {}; M.forEach(m => { msc[m.status] = (msc[m.status]||0)+1; });
+  const msd = document.getElementById('chartMaterialStatus');
+  const max1 = Math.max(...Object.values(msc), 1);
+  msd.innerHTML = `<div class="bar-list">${Object.entries(msc).map(([s,c]) => `
+    <div class="bar-row">
+      <div class="bar-label">${mstMap[s]||s}</div>
+      <div class="bar-track"><div class="bar-fill ${mstColors[s]||'todo'}" style="width:${c/max1*100}%"></div></div>
+      <div class="bar-num">${c}</div>
+    </div>`).join('')}</div>`;
+
+  // 素材类型
+  const typeMap = { design:'美术设计', art:'原画', video:'视频', copy:'文案', interactive:'交互' };
+  const tc = {}; M.forEach(m => { tc[m.type] = (tc[m.type]||0)+1; });
+  barChart(document.getElementById('chartMaterialType'),
+    Object.entries(tc).map(([t,c]) => ({ label: typeMap[t]||t, value:c })), 'done');
+
+  // 版本定级
+  const rc = {}; V.forEach(v => { rc[v.rank] = (rc[v.rank]||0)+1; });
+  const rankColors = { S:'s', A:'a', B:'b' };
+  const rcd = document.getElementById('chartVersionRank');
+  const max2 = Math.max(...Object.values(rc), 1);
+  rcd.innerHTML = `<div class="bar-list">${Object.entries(rc).map(([r,c]) => `
+    <div class="bar-row">
+      <div class="bar-label">${r} 级</div>
+      <div class="bar-track"><div class="bar-fill ${rankColors[r]||'done'}" style="width:${c/max2*100}%"></div></div>
+      <div class="bar-num">${c}</div>
+    </div>`).join('')}</div>`;
+
+  // 团队工作量
+  const memberMap = {};
+  M.forEach(m => {
+    if (!m.assignee) return;
+    if (!memberMap[m.assignee]) memberMap[m.assignee] = { total:0, done:0, inProgress:0, review:0 };
+    memberMap[m.assignee].total++;
+    if (m.status === 'done') memberMap[m.assignee].done++;
+    if (m.status === 'in-progress') memberMap[m.assignee].inProgress++;
+    if (m.status === 'review') memberMap[m.assignee].review++;
+  });
+  document.getElementById('teamGrid').innerHTML = Object.entries(memberMap).length ?
+    Object.entries(memberMap).sort((a,b) => b[1].total - a[1].total).map(([name, stats]) => `
+      <div class="member-card">
+        <div class="member-avatar">${name.charAt(0)}</div>
+        <div class="member-name">${name}</div>
+        <div style="font-size:0.75rem;color:var(--gray-500);margin-top:0.25rem">
+          完成率 ${stats.total ? Math.round(stats.done/stats.total*100) : 0}%
+        </div>
+        <div class="member-stats">
+          <div class="ms-item"><div class="ms-val">${stats.total}</div><div class="ms-lbl">总计</div></div>
+          <div class="ms-item"><div class="ms-val" style="color:var(--success)">${stats.done}</div><div class="ms-lbl">完成</div></div>
+          <div class="ms-item"><div class="ms-val" style="color:var(--warning)">${stats.inProgress}</div><div class="ms-lbl">进行中</div></div>
+        </div>
+      </div>`)
+    .join('') : '<div class="empty-state">暂无负责人数据</div>';
+
+  // 版本详情表格
+  document.getElementById('versionDetailTable').innerHTML = V.length ?
+    V.sort((a,b) => new Date(a.launchDate)-new Date(b.launchDate)).map(v => {
+      const mats = DataManager.getMaterialsByVersion(v.id);
+      const cnt = (s) => mats.filter(m=>m.status===s).length;
+      return `<tr onclick="Modal.openVersionDetail('${v.id}')" style="cursor:pointer">
+        <td style="font-weight:600">${v.name}</td>
+        <td><span class="badge rank-${v.rank.toLowerCase()}">${v.rank}级</span></td>
+        <td>${v.launchDate || '-'}</td>
+        <td>${mats.length}</td>
+        <td>${cnt('todo')}</td>
+        <td>${cnt('in-progress')}</td>
+        <td>${cnt('review')}</td>
+        <td style="color:var(--success);font-weight:600">${cnt('done')}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:0.4rem">
+            <div style="flex:1"><div class="progress-bar" style="height:6px">
+              <div class="progress-fill" style="width:${v.progress||0}%"></div>
+            </div></div>
+            <span style="font-size:0.78rem;font-weight:700;width:34px">${v.progress||0}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="9" class="empty-state">暂无版本</td></tr>';
+
+  // 逾期素材
+  const overdueList = M.filter(m => m.dueDate && m.status !== 'done' && new Date(m.dueDate) < now)
+    .sort((a,b) => new Date(a.dueDate)-new Date(b.dueDate));
+  document.getElementById('overdueList').innerHTML = overdueList.length ? `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>素材名称</th><th>所属版本</th><th>负责人</th><th>状态</th><th>截止日期</th><th>逾期天数</th></tr></thead>
+        <tbody>${overdueList.map(m => {
+          const v = DataManager.getVersion(m.versionId);
+          const days = Math.ceil((now - new Date(m.dueDate)) / 86400000);
+          return `<tr onclick="Modal.openMaterialDetail('${m.id}')" style="cursor:pointer">
+            <td>${m.name}</td>
+            <td>${v ? v.name : '-'}</td>
+            <td>${m.assignee || '-'}</td>
+            <td><span class="badge ${Utils.statusClass(m.status)}">${Utils.statusLabel(m.status)}</span></td>
+            <td>${m.dueDate}</td>
+            <td style="color:var(--danger);font-weight:700">已逾期 ${days} 天</td>
+          </tr>`;}).join('')}
+        </tbody>
+      </table>
+    </div>` : '<div class="empty-state" style="padding:1rem">🎉 暂无逾期素材</div>';
+}
+
+DataManager.init();
+setReportRange('default'); // 初始时间窗口：前7天 ~ 后1个月，内部已调用 renderReports
+GitHubSync.updateStatusUI();
+Utils.highlightNav();
+</script>
+</body>
+</html>
