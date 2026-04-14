@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · G17 营销美术素材管理系统</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #1a1c2e 0%, #16213e 50%, #0f3460 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      overflow: hidden;
+    }
+    /* 背景装饰 */
+    .bg-orb {
+      position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.15; pointer-events: none;
+    }
+    .bg-orb.a { width: 600px; height: 600px; background: #667eea; top: -200px; left: -200px; }
+    .bg-orb.b { width: 400px; height: 400px; background: #f093fb; bottom: -100px; right: -100px; }
+    .bg-orb.c { width: 300px; height: 300px; background: #4facfe; top: 40%; left: 60%; }
+
+    /* 卡片 */
+    .login-card {
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 1.5rem;
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05);
+      position: relative;
+      z-index: 10;
+      animation: cardIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(30px) scale(0.96); }
+      to   { opacity: 1; transform: translateY(0)   scale(1); }
+    }
+
+    /* Logo 区域 */
+    .login-logo {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .login-logo-icon {
+      font-size: 3rem;
+      display: block;
+      margin-bottom: 0.5rem;
+      filter: drop-shadow(0 0 20px rgba(102,126,234,0.6));
+    }
+    .login-logo-title {
+      color: white;
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .login-logo-sub {
+      color: rgba(255,255,255,0.45);
+      font-size: 0.78rem;
+      margin-top: 0.25rem;
+    }
+
+    /* 表单 */
+    .form-group { margin-bottom: 1.25rem; }
+    .form-label {
+      display: block;
+      color: rgba(255,255,255,0.65);
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      letter-spacing: 0.03em;
+    }
+    .form-input {
+      width: 100%;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 0.75rem;
+      color: white;
+      font-size: 0.95rem;
+      padding: 0.75rem 1rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .form-input::placeholder { color: rgba(255,255,255,0.3); }
+    .form-input:focus {
+      border-color: rgba(102,126,234,0.7);
+      background: rgba(255,255,255,0.12);
+      box-shadow: 0 0 0 3px rgba(102,126,234,0.2);
+    }
+    .form-input.error {
+      border-color: rgba(239,68,68,0.7);
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.15);
+    }
+
+    /* 密码眼睛 */
+    .input-wrap { position: relative; }
+    .eye-btn {
+      position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; color: rgba(255,255,255,0.4);
+      font-size: 1rem; padding: 0.25rem; transition: color 0.2s;
+    }
+    .eye-btn:hover { color: rgba(255,255,255,0.8); }
+
+    /* 错误信息 */
+    .error-msg {
+      color: #fc8181;
+      font-size: 0.78rem;
+      margin-top: 0.35rem;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      min-height: 1.2rem;
+    }
+
+    /* 登录按钮 */
+    .login-btn {
+      width: 100%;
+      padding: 0.85rem;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border: none;
+      border-radius: 0.75rem;
+      color: white;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 0.5rem;
+      letter-spacing: 0.04em;
+      box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+      position: relative;
+      overflow: hidden;
+    }
+    .login-btn::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .login-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102,126,234,0.5); }
+    .login-btn:hover::after { opacity: 1; }
+    .login-btn:active { transform: translateY(0); }
+    .login-btn.loading { pointer-events: none; opacity: 0.8; }
+    .login-btn .btn-text { transition: opacity 0.2s; }
+    .login-btn .spinner { display: none; }
+    .login-btn.loading .btn-text { opacity: 0; }
+    .login-btn.loading .spinner { display: block; }
+
+    /* 版本号 */
+    .login-footer {
+      text-align: center;
+      margin-top: 1.5rem;
+      color: rgba(255,255,255,0.2);
+      font-size: 0.7rem;
+    }
+
+    /* 摇动动画 */
+    @keyframes shake {
+      0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)}
+      60%{transform:translateX(-4px)} 80%{transform:translateX(4px)}
+    }
+    .shake { animation: shake 0.4s ease both; }
+  </style>
+</head>
+<body>
+  <div class="bg-orb a"></div>
+  <div class="bg-orb b"></div>
+  <div class="bg-orb c"></div>
+
+  <div class="login-card" id="loginCard">
+    <div class="login-logo">
+      <span class="login-logo-icon">🎮</span>
+      <div class="login-logo-title">G17 营销美术管理系统</div>
+      <div class="login-logo-sub">G17 Marketing Art · PM Workspace 2026</div>
+    </div>
+
+    <form id="loginForm" onsubmit="doLogin(event)" autocomplete="off">
+      <div class="form-group">
+        <label class="form-label">LOGIN ID</label>
+        <input class="form-input" id="loginId" type="text"
+          placeholder="请输入登录账号" autocomplete="username" spellcheck="false">
+        <div class="error-msg" id="idErr"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">PASSWORD</label>
+        <div class="input-wrap">
+          <input class="form-input" id="loginPwd" type="password"
+            placeholder="请输入密码" autocomplete="current-password">
+          <button type="button" class="eye-btn" id="eyeBtn" onclick="togglePwd()">👁</button>
+        </div>
+        <div class="error-msg" id="pwdErr"></div>
+      </div>
+      <div class="error-msg" id="globalErr" style="margin-bottom:0.5rem;font-size:0.82rem;justify-content:center"></div>
+      <button class="login-btn" type="submit" id="loginBtn">
+        <span class="btn-text">🚀 进入系统</span>
+        <span class="spinner">⏳ 验证中...</span>
+      </button>
+    </form>
+
+    <div class="login-footer">v2026.4 · 内部使用 · 请勿外传账号信息</div>
+  </div>
+
+  <script>
+    // ── 账号配置（前端简单认证，防止直接打开页面）
+    const ACCOUNTS = [
+      { id: 'G17Markerting', pwd: 'dahuayingxiao' }
+    ];
+    const SESSION_KEY = 'g17_auth';
+    const SESSION_EXPIRE = 8 * 60 * 60 * 1000; // 8小时
+
+    // 已登录则直接跳转
+    function checkAuth() {
+      const s = JSON.parse(sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY) || 'null');
+      if (s && s.exp > Date.now()) {
+        location.replace('index.html');
+      }
+    }
+    checkAuth();
+
+    function togglePwd() {
+      const input = document.getElementById('loginPwd');
+      const btn   = document.getElementById('eyeBtn');
+      if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+      else { input.type = 'password'; btn.textContent = '👁'; }
+    }
+
+    function doLogin(e) {
+      e.preventDefault();
+      document.getElementById('idErr').textContent = '';
+      document.getElementById('pwdErr').textContent = '';
+      document.getElementById('globalErr').textContent = '';
+
+      const id  = document.getElementById('loginId').value.trim();
+      const pwd = document.getElementById('loginPwd').value;
+      let ok = true;
+
+      if (!id)  { document.getElementById('idErr').textContent  = '⚠ 请输入登录 ID'; document.getElementById('loginId').classList.add('error'); ok = false; }
+      else document.getElementById('loginId').classList.remove('error');
+      if (!pwd) { document.getElementById('pwdErr').textContent = '⚠ 请输入密码'; document.getElementById('loginPwd').classList.add('error'); ok = false; }
+      else document.getElementById('loginPwd').classList.remove('error');
+      if (!ok) return;
+
+      const btn = document.getElementById('loginBtn');
+      btn.classList.add('loading');
+
+      setTimeout(() => {
+        const account = ACCOUNTS.find(a => a.id === id && a.pwd === pwd);
+        if (account) {
+          const session = { id, exp: Date.now() + SESSION_EXPIRE, loginAt: new Date().toISOString() };
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+          localStorage.setItem(SESSION_KEY, JSON.stringify(session)); // 持久化跨标签
+          location.replace('index.html');
+        } else {
+          btn.classList.remove('loading');
+          document.getElementById('globalErr').textContent = '❌ 账号或密码错误，请重试';
+          document.getElementById('loginCard').classList.add('shake');
+          document.getElementById('loginPwd').value = '';
+          document.getElementById('loginPwd').classList.add('error');
+          setTimeout(() => document.getElementById('loginCard').classList.remove('shake'), 500);
+        }
+      }, 600);
+    }
+
+    // 回车聚焦
+    document.getElementById('loginId').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('loginPwd').focus();
+    });
+  </script>
+</body>
+</html>

@@ -5,13 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>数据概览 · 大话西游素材管理系统</title>
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/auth.js"></script>
 </head>
 <body>
+<script>Auth.guard();</script>
 
 <header class="header">
   <div class="header-inner">
     <a class="logo" href="index.html">🎮 大话西游素材管理 <span class="year-badge">2026</span></a>
     <div class="header-actions">
+      <span id="autoSaveIndicator" style="font-size:0.72rem;color:var(--gray-400);opacity:0.5;transition:opacity 0.5s;white-space:nowrap"></span>
+      <button class="header-btn" onclick="AutoSave.openPanel()">🕘 历史版本</button>
+      <button class="header-btn" onclick="AutoSave.saveManual()">📌 手动保存</button>
       <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
       <button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
       <button class="header-btn" onclick="GitHubSync.pull()">⬇️ 拉取</button>
@@ -23,6 +28,8 @@
         onclick="if(confirm('将清除现有数据，重置为 2026 版本规划数据？')){DataManager.clearAndSeed();DataManager.save();renderCurrentPage();}">
         🔄 重置规划数据
       </button>
+      <span id="headerUser" style="font-size:0.75rem;color:var(--gray-500);padding:0 0.25rem"></span>
+      <button class="header-btn" style="background:rgba(239,68,68,0.08);color:#ef4444;border-color:rgba(239,68,68,0.25)" onclick="Auth.logout()">🚪 退出</button>
     </div>
   </div>
 </header>
@@ -109,6 +116,7 @@
 <div id="toast-container"></div>
 
 <script src="js/utils.js"></script>
+<script src="js/autosave.js"></script>
 <script src="js/data.js"></script>
 <script src="js/modals.js"></script>
 <script src="js/gantt.js"></script>
@@ -315,6 +323,12 @@ function handleImport(input) {
 
 // 初始化
 DataManager.init();
+// 显示登录用户
+const _user = Auth.currentUser();
+const _userEl = document.getElementById('headerUser');
+if (_userEl && _user) _userEl.textContent = `👤 ${_user}`;
+// 启动自动保存
+AutoSave.start();
 // 设置默认时间窗口：今天前7天 ~ 后1个月
 setPeriod('default');
 GitHubSync.updateStatusUI();

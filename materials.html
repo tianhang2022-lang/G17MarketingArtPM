@@ -1,20 +1,20 @@
-
+﻿
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>素材管理 · 大话西游素材管理系统</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css">  <script src="js/auth.js"></script>
 </head>
-<body>
+<body><script>Auth.guard();</script>
 
 <header class="header">
   <div class="header-inner">
     <a class="logo" href="index.html">🎮 大话西游素材管理 <span class="year-badge">2026</span></a>
     <div class="header-actions">
       <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
-      <button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
+      <span id="autoSaveIndicator" style="font-size:0.72rem;color:var(--gray-400);opacity:0.5;transition:opacity 0.5s;white-space:nowrap"></span><button class="header-btn" onclick="AutoSave.openPanel()">&#x1F558; 历史版本</button><button class="header-btn" onclick="AutoSave.saveManual()">&#x1F4CC; 手动保存</button><button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
       <button class="header-btn" onclick="GitHubSync.pull()">⬇️ 拉取</button>
       <button class="header-btn" onclick="GitHubSync.configure()">⚙️ 配置</button>
       <button class="header-btn" onclick="DataManager.exportCSV()">📊 导出CSV</button>
@@ -92,6 +92,7 @@
 <div id="toast-container"></div>
 
 <script src="js/utils.js"></script>
+<script src="js/autosave.js"></script>
 <script src="js/data.js"></script>
 <script src="js/modals.js"></script>
 <script src="js/github-sync.js"></script>
@@ -262,6 +263,10 @@ function applyUrlParams() {
 }
 
 DataManager.init();
+const _u=Auth.currentUser();
+const _uel=document.getElementById('headerUser');
+if(_uel&&_u)_uel.textContent='👤 '+_u;
+AutoSave.start();
 initVersionFilter();
 applyUrlParams();
 renderMaterials();
@@ -270,3 +275,5 @@ Utils.highlightNav();
 </script>
 </body>
 </html>
+
+
