@@ -521,6 +521,49 @@ const Modal = {
     if (typeof renderCurrentPage === 'function') renderCurrentPage();
   },
 
+  // ── 构建进度历史 HTML（版本/素材公用）
+  _buildProgressLogHTML(log, entityType) {
+    if (!log || !log.length) {
+      return `<div class="pl-empty">暂无进度历史记录</div>`;
+    }
+    const statusLabel = { 'planning':'计划中','in-progress':'进行中','review':'审核中','done':'已完成','todo':'待开始' };
+    // 反向遍历（最新在前）
+    const items = [...log].reverse().map(entry => {
+      const d = new Date(entry.time);
+      const timeStr = d.toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'}) + ' ' + d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+      const diffs = [];
+      if (entityType === 'version') {
+        if (entry._new && entry.progress !== entry._new.progress)
+          diffs.push(`进度: <span class="pl-old">${entry.progress ?? '-'}%</span> → <span class="pl-new">${entry._new.progress ?? '-'}%</span>`);
+        if (entry._new && entry.status !== entry._new.status)
+          diffs.push(`状态: <span class="pl-old">${statusLabel[entry.status]||entry.status||'-'}</span> → <span class="pl-new">${statusLabel[entry._new.status]||entry._new.status||'-'}</span>`);
+        if (entry._new && entry.launchDate !== entry._new.launchDate)
+          diffs.push(`上线日: <span class="pl-old">${entry.launchDate||'-'}</span> → <span class="pl-new">${entry._new.launchDate||'-'}</span>`);
+        if (entry._new && entry.note !== entry._new.note && (entry.note || entry._new.note))
+          diffs.push(`备注: <span class="pl-old">${entry.note||'（空）'}</span> → <span class="pl-new">${entry._new.note||'（空）'}</span>`);
+      } else {
+        if (entry._new && entry.status !== entry._new.status)
+          diffs.push(`状态: <span class="pl-old">${statusLabel[entry.status]||entry.status||'-'}</span> → <span class="pl-new">${statusLabel[entry._new.status]||entry._new.status||'-'}</span>`);
+        if (entry._new && entry.dueDate !== entry._new.dueDate)
+          diffs.push(`截止日: <span class="pl-old">${entry.dueDate||'-'}</span> → <span class="pl-new">${entry._new.dueDate||'-'}</span>`);
+        if (entry._new && entry.note !== entry._new.note && (entry.note || entry._new.note))
+          diffs.push(`备注: <span class="pl-old">${entry.note||'（空）'}</span> → <span class="pl-new">${entry._new.note||'（空）'}</span>`);
+      }
+      const diffHTML = diffs.length ? diffs.map(d => `<span class="pl-diff-item">${d}</span>`).join('') : '<span class="pl-diff-item" style="color:var(--gray-400)">字段无变化</span>';
+      return `<div class="pl-item">
+        <div class="pl-dot"></div>
+        <div class="pl-body">
+          <div class="pl-meta">
+            <span class="pl-time">${timeStr}</span>
+            <span class="pl-operator">👤 ${entry.operator||'系统'}</span>
+          </div>
+          <div class="pl-diffs">${diffHTML}</div>
+        </div>
+      </div>`;
+    });
+    return `<div class="pl-list">${items.join('')}</div>`;
+  },
+
   // ── 构建可编辑时间线
   _buildEditableTimeline(v, mats) {
     const typeIcon  = { create:'🟢', 'in-progress':'🔵', review:'🟡', done:'✅', note:'📝', milestone:'🏁', risk:'⚠️' };
@@ -569,9 +612,22 @@ const Modal = {
 
     allEvents.sort((a,b) => new Date(b.time)-new Date(a.time));
 
-    if (!allEvents.length) return `<div class="empty-state" style="padding:2rem">暂无事件，点击右上角新增</div>`;
+    const logCount = (v.progressLog||[]).length;
+    const progressLogSection = `
+      <div class="pl-collapse" id="plCollapse_v">
+        <button class="pl-toggle" onclick="(function(btn){const c=btn.closest('.pl-collapse');c.classList.toggle('open');})(this)">
+          <span>📈 进度历史</span>
+          <span class="pl-badge">${logCount}</span>
+          <span class="pl-chevron">▶</span>
+        </button>
+        <div class="pl-panel">
+          ${Modal._buildProgressLogHTML(v.progressLog, 'version')}
+        </div>
+      </div>`;
 
-    return `<div class="tl-editable">
+    if (!allEvents.length) return progressLogSection + `<div class="empty-state" style="padding:2rem">暂无事件，点击右上角新增</div>`;
+
+    return progressLogSection + `<div class="tl-editable">
       ${allEvents.map(e => {
         const d    = new Date(e.time);
         const clr  = e.color || typeColor[e.type] || '#6b7280';
@@ -948,6 +1004,17 @@ const Modal = {
                     <div style="color:var(--gray-700);line-height:1.6;white-space:pre-wrap">${m.brief}</div>
                   </div>` : '<div style="color:var(--gray-400);font-size:0.8rem;padding:1rem">暂无制作 Brief</div>'}
                 ${m.note ? `<div style="margin-top:0.75rem;font-size:0.8rem;color:var(--gray-600)"><b>备注：</b>${m.note}</div>` : ''}
+              </div>
+            </div>
+            <!-- 进度历史折叠区 -->
+            <div class="pl-collapse" id="plCollapse_m" style="margin-top:1rem">
+              <button class="pl-toggle" onclick="(function(btn){const c=btn.closest('.pl-collapse');c.classList.toggle('open');})(this)">
+                <span>📈 进度历史</span>
+                <span class="pl-badge">${(m.progressLog||[]).length}</span>
+                <span class="pl-chevron">▶</span>
+              </button>
+              <div class="pl-panel">
+                ${Modal._buildProgressLogHTML(m.progressLog, 'material')}
               </div>
             </div>
           </div>

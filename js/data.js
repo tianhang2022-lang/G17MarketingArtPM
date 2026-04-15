@@ -173,7 +173,30 @@ const DataManager = {
   updateVersion(id, data) {
     const idx = this.versions.findIndex(v => v.id === id);
     if (idx < 0) return null;
-    this.versions[idx] = { ...this.versions[idx], ...data, updatedAt: new Date().toISOString() };
+    const old = this.versions[idx];
+    // ── 进度历史：记录变化前的关键字段快照
+    const LOG_FIELDS_V = ['progress','status','launchDate','note'];
+    const hasChange = LOG_FIELDS_V.some(f => data[f] !== undefined && data[f] !== old[f]);
+    if (hasChange) {
+      const entry = {
+        time: new Date().toISOString(),
+        operator: (typeof Auth !== 'undefined' && Auth.currentUser && Auth.currentUser()) || '系统',
+        progress: old.progress,
+        status: old.status,
+        launchDate: old.launchDate,
+        note: old.note,
+        // 记录新值，方便展示 diff
+        _new: {
+          progress: data.progress !== undefined ? data.progress : old.progress,
+          status: data.status !== undefined ? data.status : old.status,
+          launchDate: data.launchDate !== undefined ? data.launchDate : old.launchDate,
+          note: data.note !== undefined ? data.note : old.note,
+        }
+      };
+      const log = old.progressLog ? [...old.progressLog, entry] : [entry];
+      data = { ...data, progressLog: log.slice(-50) };
+    }
+    this.versions[idx] = { ...old, ...data, updatedAt: new Date().toISOString() };
     this.save();
     return this.versions[idx];
   },
@@ -196,7 +219,28 @@ const DataManager = {
   updateMaterial(id, data) {
     const idx = this.materials.findIndex(m => m.id === id);
     if (idx < 0) return null;
-    this.materials[idx] = { ...this.materials[idx], ...data, updatedAt: new Date().toISOString() };
+    const old = this.materials[idx];
+    // ── 进度历史：记录变化前的关键字段快照
+    const LOG_FIELDS_M = ['status','dueDate','note'];
+    const hasChange = LOG_FIELDS_M.some(f => data[f] !== undefined && data[f] !== old[f]);
+    if (hasChange) {
+      const entry = {
+        time: new Date().toISOString(),
+        operator: (typeof Auth !== 'undefined' && Auth.currentUser && Auth.currentUser()) || '系统',
+        status: old.status,
+        dueDate: old.dueDate,
+        note: old.note,
+        // 记录新值
+        _new: {
+          status: data.status !== undefined ? data.status : old.status,
+          dueDate: data.dueDate !== undefined ? data.dueDate : old.dueDate,
+          note: data.note !== undefined ? data.note : old.note,
+        }
+      };
+      const log = old.progressLog ? [...old.progressLog, entry] : [entry];
+      data = { ...data, progressLog: log.slice(-50) };
+    }
+    this.materials[idx] = { ...old, ...data, updatedAt: new Date().toISOString() };
     this._recalcProgress(this.materials[idx].versionId);
     this.save();
     return this.materials[idx];
