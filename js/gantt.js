@@ -9,6 +9,8 @@ const Gantt = {
   _rangeEnd: '',
   _minDate: null,
   _maxDate: null,
+  _expandedVersions: new Set(),   // 展开/折叠状态
+  _resizeObserver: null,           // 自适应宽度观察器
 
   // ── 默认时间范围：前7天 ~ 后30天
   _defaultRange() {
@@ -47,6 +49,7 @@ const Gantt = {
     }
     this._buildToolbar(container);
     this._renderChart(container);
+    this._initResizeObserver(container);
   },
 
   // ── 工具栏
@@ -93,6 +96,7 @@ const Gantt = {
           onchange="Gantt._setRange('end',this.value)">
         <button class="gtb-btn" onclick="Gantt._resetRange()" title="重置为前后2月">↺</button>
       </div>
+      <button class="gtb-btn" onclick="Gantt._fitWidth()" title="滚动到起点并适配宽度" style="white-space:nowrap">↔ 适配宽度</button>
       <button class="btn btn-success btn-sm" onclick="Modal.openVersionForm()" style="margin-left:auto;white-space:nowrap">➕ 新建版本</button>
     </div>
     <!-- 第二行：多重筛选 -->
@@ -153,6 +157,53 @@ const Gantt = {
     this._rerender();
   },
   _clearFilters() { this._filterVersion=''; this._filterAssignee=''; this._filterType=''; this._rerender(); },
+
+  // ── 适配宽度：滚回起点并重渲染
+  _fitWidth() {
+    const wrap = this._container?.querySelector('.gantt-scroll-wrap');
+    if (wrap) wrap.scrollLeft = 0;
+    this._rerender();
+    Utils.toast('已适配宽度', 'success', 1500);
+  },
+
+  // ── ResizeObserver：容器宽度变化时自动重渲
+  _initResizeObserver(container) {
+    if (this._resizeObserver) { this._resizeObserver.disconnect(); }
+    this._resizeObserver = new ResizeObserver(() => {
+      // 防抖 200ms
+      clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => {
+        if (this._container) {
+          const tb = this._container.querySelector('.gantt-toolbar');
+          const wrap = this._container.querySelector('.gantt-wrap');
+          if (tb && wrap) {
+            // 仅更新 label 列宽，无需整体重渲
+            const cw = this._container.clientWidth;
+            const lw = Math.min(220, Math.max(140, Math.round(cw * 0.18)));
+            this._container.querySelectorAll('.gantt-sidebar').forEach(el => {
+              el.style.width = lw + 'px';
+              el.style.minWidth = lw + 'px';
+              el.style.maxWidth = lw + 'px';
+            });
+            this._container.querySelectorAll('.gantt-label-name').forEach(el => {
+              el.style.maxWidth = (lw - 20) + 'px';
+            });
+          }
+        }
+      }, 200);
+    });
+    this._resizeObserver.observe(container);
+  },
+
+  // ── 展开/折叠版本行
+  toggleVersion(id) {
+    if (this._expandedVersions.has(id)) {
+      this._expandedVersions.delete(id);
+    } else {
+      this._expandedVersions.add(id);
+    }
+    this._rerender();
+  },
 
   _rerender() {
     if (!this._container) return;
@@ -286,7 +337,13 @@ const Gantt = {
     const sorted = [...versions].sort((a,b)=>new Date(a.launchDate||'9999')-new Date(b.launchDate||'9999'));
 
     if (this._groupBy === 'version') {
-      return sorted.map(v => this._makeVersionRow(v, pct, todayPct, colSpan)).join('');
+      return sorted.map(v => {
+        const vRow = this._makeVersionRow(v, pct, todayPct, colSpan);
+        if (!this._expandedVersions.has(v.id)) return vRow;
+        // 展开：渲染子行
+        const childRows = this._makeVersionChildRows(v, pct, todayPct, colSpan);
+        return vRow + childRows;
+      }).join('');
     }
 
     // 非版本分组：使用已筛选的版本范围内的素材
@@ -402,11 +459,22 @@ const Gantt = {
     const doneCnt = displayMats.filter(m=>m.status==='done').length;
     const subLabel = `${doneCnt}/${displayMats.length} · ${v.progress||0}% · ${v.launchDate||'无日期'}`;
 
+    const isExpanded = this._expandedVersions.has(v.id);
+    const hasMats    = DataManager.getMaterialsByVersion(v.id).length > 0;
+    const arrowHtml  = hasMats
+      ? `<span class="gantt-expand-arrow${isExpanded?' expanded':''}" onclick="event.stopPropagation();Gantt.toggleVersion('${v.id}')" title="${isExpanded?'折叠':'展开'}素材行">▶</span>`
+      : `<span class="gantt-expand-arrow" style="opacity:0;pointer-events:none">▶</span>`;
+
     return `
-    <tr class="gantt-row" data-id="${v.id}">
-      <td class="gantt-sidebar gantt-label" onclick="Modal.openVersionDetail('${v.id}')" style="cursor:pointer">
-        <div class="gantt-label-name" title="${v.name}">${rankBadge}${v.name}</div>
-        <div class="gantt-label-meta">${subLabel}</div>
+    <tr class="gantt-row${isExpanded?' gantt-row-expanded':''}" data-id="${v.id}">
+      <td class="gantt-sidebar gantt-label" style="cursor:pointer">
+        <div style="display:flex;align-items:center;gap:0.3rem">
+          ${arrowHtml}
+          <div style="min-width:0;flex:1" onclick="Modal.openVersionDetail('${v.id}')">
+            <div class="gantt-label-name" title="${v.name}">${rankBadge}${v.name}</div>
+            <div class="gantt-label-meta">${subLabel}</div>
+          </div>
+        </div>
       </td>
       <td class="gantt-cell" colspan="${colSpan}" style="position:relative">
         <div class="gantt-row-inner">
@@ -423,6 +491,61 @@ const Gantt = {
         </div>
       </td>
     </tr>`;
+  },
+
+  // ── 版本展开后的素材子行
+  _makeVersionChildRows(v, pct, todayPct, colSpan) {
+    const mats = DataManager.getMaterialsByVersion(v.id).filter(m =>
+      (!this._filterType     || m.type     === this._filterType) &&
+      (!this._filterAssignee || m.assignee === this._filterAssignee)
+    );
+    if (!mats.length) return '';
+
+    const today = new Date();
+    const statColor = { todo:'#9ca3af', 'in-progress':'#f59e0b', review:'#3b82f6', done:'#10b981' };
+
+    // 制作期起始
+    let prodStart = this._minDate;
+    if (v.launchDate && v.rank) {
+      try {
+        const s = calcVersionSchedule(v.launchDate, v.rank);
+        const pp = s.phases.find(p => p.key === 'make' || p.name === '制作期');
+        if (pp) prodStart = pp.start;
+      } catch(e) {}
+    }
+
+    return mats.map(m => {
+      const sc  = statColor[m.status] || '#9ca3af';
+      const dueD = m.dueDate ? new Date(m.dueDate + 'T00:00:00') : (v.launchDate ? new Date(v.launchDate + 'T00:00:00') : today);
+      const bl   = pct(prodStart);
+      const bw   = Math.max(pct(dueD) - bl, 2);
+      const dotP = pct(dueD);
+      const overdue = m.dueDate && m.status !== 'done' && dueD < today;
+      return `
+      <tr class="gantt-row gantt-child-row" data-mat-id="${m.id}">
+        <td class="gantt-sidebar gantt-label gantt-child-label" onclick="Modal.openMaterialDetail('${m.id}')" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:0.35rem;padding-left:1.2rem">
+            <span class="gantt-child-dot" style="background:${sc}"></span>
+            <div style="min-width:0;flex:1">
+              <div class="gantt-label-name${overdue?' mg-overdue':''}" title="${m.name}" style="font-weight:500">${m.name}</div>
+              <div class="gantt-label-meta">${m.assignee||'未分配'} · ${m.dueDate||'无截止日'}</div>
+            </div>
+          </div>
+        </td>
+        <td class="gantt-cell" colspan="${colSpan}" style="position:relative">
+          <div class="gantt-row-inner">
+            ${todayPct>0&&todayPct<100?`<div class="gantt-today-line" style="left:${todayPct}%"></div>`:''}
+            <div class="gantt-phase gantt-child-bar" style="left:${bl}%;width:${bw}%;background:${sc}33;border:1.5px solid ${sc}88;border-radius:6px">
+              <span class="gantt-phase-label" style="color:${sc}">${m.name}</span>
+            </div>
+            <div style="position:absolute;left:${dotP}%;top:50%;transform:translate(-50%,-50%);width:10px;height:10px;border-radius:50%;background:${sc};border:2px solid white;z-index:5;box-shadow:0 1px 3px rgba(0,0,0,0.2)" title="截止：${m.dueDate||'未设'}"></div>
+          </div>
+          <div class="gantt-row-actions">
+            <button class="gantt-action-btn" onclick="Modal.openMaterialDetail('${m.id}')" title="查看/编辑">✏️</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
   },
 
   _makeSimpleRow({ label, subLabel, progress, barL, barW, todayPct, colSpan, color }) {
@@ -619,10 +742,12 @@ const Gantt = {
     document.addEventListener('mouseup', onUp);
   },
 
-  // ── 素材排期甘特图（版本详情卡片内）重写版 - 支持无素材/筛选/编辑
+  // ── 素材排期甘特图（版本详情卡片内）重写版 - 支持无素材/筛选/编辑/行展开
   renderMaterialGantt(container, versionId, filterType = '') {
     const v = DataManager.getVersion(versionId);
     if (!v) { container.innerHTML = '<div class="gantt-empty" style="padding:1rem">找不到版本数据</div>'; return; }
+    // 每次渲染时重置展开状态
+    const expandedMat = new Set();
 
     // 全部素材
     const allMats = DataManager.getMaterialsByVersion(versionId)
@@ -735,22 +860,41 @@ const Gantt = {
           const dotPos  = pct(dueD);
           const sc      = statColor[m.status] || '#9ca3af';
           const overdue = m.dueDate && m.status !== 'done' && dueD < today;
+          const priorityLabel = { high:'🔴 高', medium:'🟡 中', low:'⚪ 低' }[m.priority] || '—';
+          const matRowId  = `mg-row-${m.id}`;
+          const matDetId  = `mg-det-${m.id}`;
+          const detHtml   = `
+            <div class="mg-mat-detail" id="${matDetId}" style="display:none">
+              <div class="mg-detail-grid">
+                <div><span class="mg-det-label">负责人</span><span>${m.assignee||'—'}</span></div>
+                <div><span class="mg-det-label">优先级</span><span>${priorityLabel}</span></div>
+                <div><span class="mg-det-label">创建时间</span><span>${m.createdAt?m.createdAt.slice(0,10):'—'}</span></div>
+                <div><span class="mg-det-label">截止日期</span>
+                  <input type="date" class="mg-due-input" value="${m.dueDate||''}" style="font-size:0.72rem"
+                    onchange="Gantt._mgUpdateDue('${m.id}','${versionId}',this.value,'${filterType}',this)">
+                </div>
+              </div>
+              ${m.brief ? `<div class="mg-det-brief">📝 ${m.brief}</div>` : ''}
+            </div>`;
           return `
-          <div class="mg-row">
-            <div class="mg-row-label" title="${m.name}" onclick="Modal.openMaterialDetail('${m.id}')" style="cursor:pointer">
-              <span class="mg-status-dot" style="background:${sc}"></span>
-              <span class="mg-row-name${overdue?' mg-overdue':''}">${m.name}</span>
-              ${m.assignee ? `<span class="mg-assignee">${m.assignee}</span>` : ''}
+          <div class="mg-row-wrap" id="${matRowId}">
+            <div class="mg-row" onclick="Gantt._mgToggleDetail('${m.id}')" style="cursor:pointer">
+              <div class="mg-row-label" title="${m.name}">
+                <span class="mg-status-dot" style="background:${sc}"></span>
+                <span class="mg-row-name${overdue?' mg-overdue':''}">${m.name}</span>
+                ${m.assignee ? `<span class="mg-assignee">${m.assignee}</span>` : ''}
+              </div>
+              <div class="mg-row-actions" onclick="event.stopPropagation()">
+                <input type="date" class="mg-due-input" value="${m.dueDate||''}" title="截止日" onchange="Gantt._mgUpdateDue('${m.id}','${versionId}',this.value,'${filterType}',this)">
+                <button class="mg-act-btn" title="编辑素材" onclick="Modal.openMaterialDetail('${m.id}')">✏️</button>
+              </div>
+              <div class="mg-bar-area">
+                ${phaseBg}${mstLines}${todayLine}
+                <div class="mg-bar" style="left:${bl}%;width:${bw}%;background:${sc}33;border:1.5px solid ${sc}88" title="${m.name}"></div>
+                <div class="mg-dot" style="left:${dotPos}%;background:${sc};border-color:${overdue?'#ef4444':'white'}" title="截止：${m.dueDate||'未设'}"></div>
+              </div>
             </div>
-            <div class="mg-row-actions">
-              <input type="date" class="mg-due-input" value="${m.dueDate||''}" title="截止日" onchange="Gantt._mgUpdateDue('${m.id}','${versionId}',this.value,'${filterType}',this)">
-              <button class="mg-act-btn" title="编辑素材" onclick="Modal.openMaterialDetail('${m.id}')">✏️</button>
-            </div>
-            <div class="mg-bar-area">
-              ${phaseBg}${mstLines}${todayLine}
-              <div class="mg-bar" style="left:${bl}%;width:${bw}%;background:${sc}33;border:1.5px solid ${sc}88" title="${m.name}"></div>
-              <div class="mg-dot" style="left:${dotPos}%;background:${sc};border-color:${overdue?'#ef4444':'white'}" title="截止：${m.dueDate||'未设'}"></div>
-            </div>
+            ${detHtml}
           </div>`;
         }).join('');
 
@@ -775,6 +919,16 @@ const Gantt = {
         ${sched.milestones.map(m=>`<span class="mg-legend-item">${m.icon}${m.name}</span>`).join('')}
       </div>` : ''}
     </div>`;
+  },
+
+  // ── 素材行展开/折叠详情面板
+  _mgToggleDetail(matId) {
+    const det = document.getElementById('mg-det-' + matId);
+    if (!det) return;
+    const isOpen = det.style.display !== 'none';
+    det.style.display = isOpen ? 'none' : 'block';
+    const row = det.closest('.mg-row-wrap');
+    if (row) row.classList.toggle('mg-row-expanded', !isOpen);
   },
 
   // 更新素材截止日并重新渲染
