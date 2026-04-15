@@ -13,6 +13,8 @@
   <div class="header-inner">
     <a class="logo" href="index.html">🎮 大话西游素材管理 <span class="year-badge">2026</span></a>
     <div class="header-actions">
+      <span id="autoSyncStatus" style="font-size:0.7rem;white-space:nowrap;color:var(--gray-400)"></span>
+      <button class="header-btn" id="autoSyncBtn" onclick="GitHubSync._autoTimer?GitHubSync.stopAutoSync():GitHubSync.startAutoSync()" style="font-size:0.72rem">▶ 自动同步</button>
       <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
       <span id="autoSaveIndicator" style="font-size:0.72rem;color:var(--gray-400);opacity:0.5;transition:opacity 0.5s;white-space:nowrap"></span><button class="header-btn" onclick="AutoSave.openPanel()">&#x1F558; 历史版本</button><button class="header-btn" onclick="AutoSave.saveManual()">&#x1F4CC; 手动保存</button><button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
       <button class="header-btn" onclick="GitHubSync.pull()">⬇️ 拉取</button>
@@ -270,7 +272,7 @@ AutoSave.start();
 initVersionFilter();
 applyUrlParams();
 renderMaterials();
-GitHubSync.updateStatusUI();
+GitHubSync.init();
 Utils.highlightNav();
 </script>
 </body>

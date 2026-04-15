@@ -298,6 +298,14 @@ tbody tr:hover{background:var(--gray-50);}
 .tl-ed-title { font-weight:600;font-size:0.825rem;color:var(--gray-800); }
 .tl-ed-text { font-size:0.775rem;color:var(--gray-600);margin-top:0.2rem; }
 
+/* ── Toggle Switch ── */
+.toggle-switch { position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0; }
+.toggle-switch input { opacity:0;width:0;height:0;position:absolute; }
+.toggle-slider { width:40px;height:22px;background:#d1d5db;border-radius:11px;transition:background 0.2s;position:relative;flex-shrink:0; }
+.toggle-slider::after { content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:white;border-radius:50%;transition:transform 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+.toggle-switch input:checked + .toggle-slider { background:var(--primary); }
+.toggle-switch input:checked + .toggle-slider::after { transform:translateX(18px); }
+
 /* ===== 详情 ===== */
 .detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin-bottom:1rem;}
 .detail-card{background:var(--gray-50);border-radius:0.75rem;padding:1rem;}
