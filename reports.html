@@ -15,7 +15,7 @@
     <div class="header-actions">
       <span id="autoSyncStatus" style="font-size:0.7rem;white-space:nowrap;color:var(--gray-400)"></span>
       <button class="header-btn" id="autoSyncBtn" onclick="GitHubSync._autoTimer?GitHubSync.stopAutoSync():GitHubSync.startAutoSync()" style="font-size:0.72rem">▶ 自动同步</button>
-      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
+      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div><span id="lanClientCount" style="font-size:0.68rem;color:#10b981;padding:0 0.25rem"></span>
       <span id="autoSaveIndicator" style="font-size:0.72rem;color:var(--gray-400);opacity:0.5;transition:opacity 0.5s;white-space:nowrap"></span><button class="header-btn" onclick="AutoSave.openPanel()">&#x1F558; 历史版本</button><button class="header-btn" onclick="AutoSave.saveManual()">&#x1F4CC; 手动保存</button><button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
       <button class="header-btn" onclick="DataManager.exportCSV()">📊 导出CSV</button>
       <button class="header-btn" onclick="DataManager.exportJSON()">📤 导出JSON</button>
@@ -140,6 +140,7 @@
 <script src="js/autosave.js"></script>
 <script src="js/modals.js"></script>
 <script src="js/github-sync.js"></script>
+<script src="js/lan-sync.js"></script>
 <script>
 function renderCurrentPage() { renderReports(); }
 
@@ -377,6 +378,7 @@ if(_uel&&_u)_uel.textContent='👤 '+_u;
 AutoSave.start();
 setReportRange('default'); // 初始时间窗口：前7天 ~ 后1个月，内部已调用 renderReports
 GitHubSync.init();
+LanSync.init();
 Utils.highlightNav();
 </script>
 </body>

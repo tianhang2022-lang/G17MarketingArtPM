@@ -19,7 +19,7 @@
       <button class="header-btn" onclick="AutoSave.saveManual()">📌 手动保存</button>
       <span id="autoSyncStatus" style="font-size:0.7rem;white-space:nowrap;color:var(--gray-400)"></span>
       <button class="header-btn" id="autoSyncBtn" onclick="GitHubSync._autoTimer?GitHubSync.stopAutoSync():GitHubSync.startAutoSync()" style="font-size:0.72rem">▶ 自动同步</button>
-      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div>
+      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncText">加载中...</span></div><span id="lanClientCount" style="font-size:0.68rem;color:#10b981;padding:0 0.25rem"></span>
       <button class="header-btn" onclick="GitHubSync.push()">⬆️ 推送</button>
       <button class="header-btn" onclick="GitHubSync.pull()">⬇️ 拉取</button>
       <button class="header-btn" onclick="GitHubSync.configure()">⚙️ 配置</button>
@@ -123,6 +123,7 @@
 <script src="js/modals.js"></script>
 <script src="js/gantt.js"></script>
 <script src="js/github-sync.js"></script>
+<script src="js/lan-sync.js"></script>
 <script>
 // ── 时间窗口设置
 function setPeriod(mode) {
@@ -334,6 +335,7 @@ AutoSave.start();
 // 设置默认时间窗口：今天前7天 ~ 后1个月
 setPeriod('default');
 GitHubSync.init();
+LanSync.init();
 Utils.highlightNav();
 </script>
 </body>

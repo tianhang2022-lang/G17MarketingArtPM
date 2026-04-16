@@ -79,6 +79,7 @@
 <script src="js/autosave.js"></script>
 <script src="js/modals.js"></script>
 <script src="js/github-sync.js"></script>
+<script src="js/lan-sync.js"></script>
 <script>
 let currentView = 'grid';
 
@@ -198,6 +199,7 @@ if(_uel&&_u)_uel.textContent='👤 '+_u;
 AutoSave.start();
 renderVersions();
 GitHubSync.init();
+LanSync.init();
 Utils.highlightNav();
 </script>
 </body>
